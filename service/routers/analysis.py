@@ -128,6 +128,41 @@ class FranchiseWaiverOut(BaseModel):
     summary: str
 
 
+class SellHighSignalOut(BaseModel):
+    mfl_player_id: str
+    name: str
+    position: str
+    nfl_team: str
+    age: Optional[float]
+    fc_value: int
+    overall_rank: int
+    position_rank: int
+    trend_30d: int
+    redraft_value: int
+    sell_score: float
+    sell_signal: str
+    reasons: list[str]
+    tier: Optional[int]
+
+
+class FranchiseSellHighOut(BaseModel):
+    franchise_id: str
+    franchise_name: str
+    signals: list[SellHighSignalOut]
+    strong_sells: list[SellHighSignalOut]
+    consider_sells: list[SellHighSignalOut]
+    buy_lows: list[SellHighSignalOut]
+    summary: str
+
+
+class FCCacheStatusOut(BaseModel):
+    cached: bool
+    age_hours: Optional[float]
+    count: Optional[int]
+    fetched_at: Optional[str]
+    fresh: Optional[bool]
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -272,6 +307,37 @@ def _waiver_report_out(report) -> FranchiseWaiverOut:
     )
 
 
+def _sell_signal_out(s) -> SellHighSignalOut:
+    return SellHighSignalOut(
+        mfl_player_id=s.mfl_player_id,
+        name=s.name,
+        position=s.position,
+        nfl_team=s.nfl_team,
+        age=s.age,
+        fc_value=s.fc_value,
+        overall_rank=s.overall_rank,
+        position_rank=s.position_rank,
+        trend_30d=s.trend_30d,
+        redraft_value=s.redraft_value,
+        sell_score=s.sell_score,
+        sell_signal=s.sell_signal,
+        reasons=s.reasons,
+        tier=s.tier,
+    )
+
+
+def _sell_report_out(report) -> FranchiseSellHighOut:
+    return FranchiseSellHighOut(
+        franchise_id=report.franchise_id,
+        franchise_name=report.franchise_name,
+        signals=[_sell_signal_out(s) for s in report.signals],
+        strong_sells=[_sell_signal_out(s) for s in report.strong_sells],
+        consider_sells=[_sell_signal_out(s) for s in report.consider_sells],
+        buy_lows=[_sell_signal_out(s) for s in report.buy_lows],
+        summary=report.summary,
+    )
+
+
 async def _fetch_free_agents(request: Request):
     """Fetch FA pool from MFL and return list of Player objects."""
     snapshot = _require_snapshot(request)
@@ -300,6 +366,13 @@ async def _fetch_free_agents(request: Request):
         p for pid, p in snapshot.players.items()
         if pid in fa_ids and not p.is_team_unit
     ]
+
+
+def _get_fc_value_map():
+    """Fetch FantasyCalc values and return mfl_id → FCPlayerValue map."""
+    from mfl_ai_gm.adapters.fantasycalc_client import fetch_fc_values, build_mfl_value_map
+    players = fetch_fc_values()
+    return build_mfl_value_map(players)
 
 
 # ---------------------------------------------------------------------------
@@ -335,7 +408,6 @@ async def get_contention_windows(request: Request):
 async def get_fa_pool(request: Request):
     """
     Global FA pool ranked by dynasty value.
-    Scores every available player by age curve x position scarcity.
     Returns empty list during preseason when MFL wire is closed.
     """
     free_agents = await _fetch_free_agents(request)
@@ -348,7 +420,6 @@ async def get_fa_pool(request: Request):
 async def get_franchise_waivers(franchise_id: str, request: Request):
     """
     Per-franchise waiver recommendations — ranked list + position breakdown.
-    Combines FA dynasty value with roster need scoring.
     Roster needs always populated; top_adds empty until MFL opens wire.
     """
     snapshot = _require_snapshot(request)
@@ -369,3 +440,62 @@ async def get_franchise_waivers(franchise_id: str, request: Request):
     fa_pool, pos_counts = _score_fa_pool(free_agents)
     report = build_franchise_report(franchise, snapshot, fa_pool, pos_counts)
     return _waiver_report_out(report)
+
+
+@router.get("/sell-high/all", response_model=list[FranchiseSellHighOut])
+async def get_all_sell_high(request: Request):
+    """
+    Sell-high analysis for all franchises using FantasyCalc dynasty values.
+    Returns list sorted by franchise name.
+    """
+    snapshot = _require_snapshot(request)
+    value_map = _get_fc_value_map()
+    from mfl_ai_gm.analysis.sell_high import build_all_sell_reports
+    reports = build_all_sell_reports(snapshot, value_map)
+    return [_sell_report_out(r) for r in reports]
+
+
+@router.get("/sell-high/{franchise_id}", response_model=FranchiseSellHighOut)
+async def get_franchise_sell_high(franchise_id: str, request: Request):
+    """
+    Sell-high analysis for a single franchise.
+    Players ranked by sell score — Strong Sell → Consider Selling → Hold → Buy Low.
+    """
+    snapshot = _require_snapshot(request)
+    fmap = snapshot.franchise_map
+    if franchise_id not in fmap:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Franchise '{franchise_id}' not found. Valid IDs: {list(fmap.keys())}",
+        )
+
+    franchise = fmap[franchise_id]
+    value_map = _get_fc_value_map()
+    player_names = {pid: p.name for pid, p in snapshot.players.items()}
+    roster = snapshot.rosters.get(franchise_id)
+    roster_ids = list(roster.all_ids) if roster else []
+
+    from mfl_ai_gm.analysis.sell_high import build_franchise_sell_report
+    report = build_franchise_sell_report(
+        franchise_id=franchise_id,
+        franchise_name=franchise.name,
+        roster_player_ids=roster_ids,
+        mfl_value_map=value_map,
+        snapshot_player_names=player_names,
+    )
+    return _sell_report_out(report)
+
+
+@router.get("/fc-cache/status", response_model=FCCacheStatusOut)
+async def get_fc_cache_status():
+    """Status of the FantasyCalc value cache."""
+    from mfl_ai_gm.adapters.fantasycalc_client import get_cache_metadata
+    return get_cache_metadata()
+
+
+@router.post("/fc-cache/refresh", response_model=FCCacheStatusOut)
+async def refresh_fc_cache():
+    """Force-refresh the FantasyCalc value cache from the API."""
+    from mfl_ai_gm.adapters.fantasycalc_client import fetch_fc_values, get_cache_metadata
+    fetch_fc_values(force_refresh=True)
+    return get_cache_metadata()
