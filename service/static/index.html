@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Purple Monkey Dynasty League — AI GM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #080810;
+    --bg2:       #0d0d1a;
+    --bg3:       #12121f;
+    --border:    #1e1e35;
+    --border2:   #2a2a45;
+    --accent:    #a855f7;
+    --accent2:   #7c3aed;
+    --accent-dim:#a855f720;
+    --accent-glow: 0 0 24px #a855f740;
+    --text:      #e8e8f0;
+    --text2:     #9090b0;
+    --text3:     #5a5a80;
+    --green:     #34d399;
+    --yellow:    #fbbf24;
+    --red:       #f87171;
+    --blue:      #60a5fa;
+    --sidebar:   220px;
+    --font-head: 'Syne', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Sidebar ────────────────────────────────────── */
+  #sidebar {
+    position: fixed;
+    top: 0; left: 0;
+    width: var(--sidebar);
+    height: 100vh;
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    z-index: 100;
+    overflow: hidden;
+  }
+
+  .sidebar-logo {
+    padding: 24px 20px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar-logo .monkey {
+    font-size: 28px;
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+
+  .sidebar-logo .title {
+    font-family: var(--font-head);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    line-height: 1.4;
+  }
+
+  .sidebar-logo .subtitle {
+    font-size: 10px;
+    color: var(--text3);
+    margin-top: 2px;
+    letter-spacing: 0.08em;
+  }
+
+  .sidebar-nav {
+    flex: 1;
+    padding: 12px 0;
+    overflow-y: auto;
+  }
+
+  .nav-section {
+    padding: 8px 20px 4px;
+    font-size: 9px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text3);
+    font-weight: 500;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 20px;
+    cursor: pointer;
+    color: var(--text2);
+    transition: all 0.15s;
+    border-left: 2px solid transparent;
+    font-size: 12px;
+    letter-spacing: 0.02em;
+  }
+
+  .nav-item:hover { color: var(--text); background: var(--accent-dim); }
+
+  .nav-item.active {
+    color: var(--accent);
+    border-left-color: var(--accent);
+    background: var(--accent-dim);
+  }
+
+  .nav-icon { font-size: 14px; width: 18px; text-align: center; }
+
+  .sidebar-footer {
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+  }
+
+  .status-dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+    margin-right: 6px;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .status-text { font-size: 10px; color: var(--text3); }
+
+  /* ── Main content ───────────────────────────────── */
+  #main {
+    margin-left: var(--sidebar);
+    min-height: 100vh;
+    padding: 0;
+  }
+
+  .topbar {
+    position: sticky;
+    top: 0;
+    background: var(--bg)cc;
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    z-index: 50;
+  }
+
+  .topbar-title {
+    font-family: var(--font-head);
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+  }
+
+  .topbar-meta {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    font-size: 11px;
+    color: var(--text3);
+  }
+
+  .topbar-meta span { color: var(--text2); }
+
+  .refresh-btn {
+    background: var(--accent-dim);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    padding: 6px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    transition: all 0.15s;
+  }
+
+  .refresh-btn:hover {
+    background: var(--accent);
+    color: #000;
+    box-shadow: var(--accent-glow);
+  }
+
+  .refresh-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ── Page sections ──────────────────────────────── */
+  .page { display: none; padding: 28px 32px; }
+  .page.active { display: block; }
+
+  .page-header {
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .page-header h1 {
+    font-family: var(--font-head);
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+  }
+
+  .page-header p {
+    color: var(--text3);
+    margin-top: 4px;
+    font-size: 11px;
+  }
+
+  /* ── Cards ──────────────────────────────────────── */
+  .card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  .card-title {
+    font-family: var(--font-head);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+
+  /* ── Table ──────────────────────────────────────── */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+
+  .data-table th {
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text3);
+    border-bottom: 1px solid var(--border);
+    font-weight: 500;
+  }
+
+  .data-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text2);
+    transition: background 0.1s;
+  }
+
+  .data-table tr:hover td { background: var(--accent-dim); }
+  .data-table tr:last-child td { border-bottom: none; }
+
+  .data-table td.name {
+    color: var(--text);
+    font-weight: 500;
+    font-family: var(--font-head);
+    font-size: 13px;
+  }
+
+  .data-table td.num {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  /* ── Badges ─────────────────────────────────────── */
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .badge-contend { background: #34d39920; color: var(--green); border: 1px solid #34d39940; }
+  .badge-transition { background: #fbbf2420; color: var(--yellow); border: 1px solid #fbbf2440; }
+  .badge-rebuild { background: #f8717120; color: var(--red); border: 1px solid #f8717140; }
+  .badge-grade-a { background: #34d39920; color: var(--green); }
+  .badge-grade-b { background: #60a5fa20; color: var(--blue); }
+  .badge-grade-c { background: #fbbf2420; color: var(--yellow); }
+  .badge-grade-d { background: #f8717120; color: var(--red); }
+
+  /* ── Score bar ──────────────────────────────────── */
+  .score-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .score-bar {
+    flex: 1;
+    height: 4px;
+    background: var(--border2);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .score-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.6s ease;
+  }
+
+  .score-val {
+    font-variant-numeric: tabular-nums;
+    font-size: 11px;
+    color: var(--text2);
+    min-width: 32px;
+    text-align: right;
+  }
+
+  /* ── Rank badge ─────────────────────────────────── */
+  .rank-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px; height: 22px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    background: var(--border);
+    color: var(--text2);
+  }
+
+  .rank-num.top3 { background: var(--accent-dim); color: var(--accent); }
+
+  /* ── Stat KPI ───────────────────────────────────── */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+
+  .kpi {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+  }
+
+  .kpi-label {
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text3);
+    margin-bottom: 6px;
+  }
+
+  .kpi-value {
+    font-family: var(--font-head);
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--text);
+    line-height: 1;
+  }
+
+  .kpi-sub { font-size: 10px; color: var(--text3); margin-top: 4px; }
+
+  /* ── Dynasty window bars ────────────────────────── */
+  .window-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .window-row:last-child { border-bottom: none; }
+
+  .window-name {
+    width: 200px;
+    font-family: var(--font-head);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .window-bar-wrap { flex: 1; }
+
+  .window-score-label {
+    font-size: 11px;
+    color: var(--text3);
+    min-width: 36px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Franchise detail ───────────────────────────── */
+  .pos-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+
+  .pos-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    text-align: center;
+  }
+
+  .pos-card .pos-label {
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text3);
+    margin-bottom: 6px;
+  }
+
+  .pos-card .pos-score {
+    font-family: var(--font-head);
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--text);
+  }
+
+  .pos-card .pos-grade { font-size: 10px; margin-top: 2px; }
+
+  .player-list { display: flex; flex-direction: column; gap: 4px; }
+
+  .player-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    transition: background 0.1s;
+  }
+
+  .player-row:hover { background: var(--accent-dim); }
+
+  .player-pos {
+    width: 28px;
+    text-align: center;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    padding: 2px 4px;
+    border-radius: 3px;
+  }
+
+  .pos-QB { background: #60a5fa20; color: var(--blue); }
+  .pos-RB { background: #34d39920; color: var(--green); }
+  .pos-WR { background: #a855f720; color: var(--accent); }
+  .pos-TE { background: #fbbf2420; color: var(--yellow); }
+
+  .player-name { flex: 1; color: var(--text); font-size: 12px; }
+  .player-team { color: var(--text3); font-size: 10px; }
+  .player-age { color: var(--text3); font-size: 10px; min-width: 40px; text-align: right; }
+
+  /* ── Loading / empty states ─────────────────────── */
+  .loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 60px;
+    color: var(--text3);
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .spinner {
+    width: 24px; height: 24px;
+    border: 2px solid var(--border2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .empty { color: var(--text3); text-align: center; padding: 40px; font-size: 12px; }
+
+  /* ── Franchise selector ─────────────────────────── */
+  .franchise-select {
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    cursor: pointer;
+    margin-bottom: 20px;
+    width: 100%;
+    max-width: 320px;
+  }
+
+  .franchise-select:focus { outline: none; border-color: var(--accent); }
+
+  /* ── Scrollbar ──────────────────────────────────── */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+  /* ── Animations ─────────────────────────────────── */
+  .fade-in { animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  .accent { color: var(--accent); }
+  .muted { color: var(--text3); }
+  .mono { font-family: var(--font-mono); }
+</style>
+</head>
+<body>
+
+<!-- ── Sidebar ─────────────────────────────────────── -->
+<nav id="sidebar">
+  <div class="sidebar-logo">
+    <div class="monkey">🐒</div>
+    <div class="title">Purple Monkey<br>Dynasty League</div>
+    <div class="subtitle">AI GM · 2026</div>
+  </div>
+
+  <div class="sidebar-nav">
+    <div class="nav-section">League</div>
+    <div class="nav-item active" data-page="standings">
+      <span class="nav-icon">📊</span> Standings
+    </div>
+    <div class="nav-item" data-page="dashboard">
+      <span class="nav-icon">⚡</span> Dashboard
+    </div>
+
+    <div class="nav-section">Dynasty</div>
+    <div class="nav-item" data-page="dynasty">
+      <span class="nav-icon">🏆</span> Dynasty Tools
+    </div>
+    <div class="nav-item" data-page="roster">
+      <span class="nav-icon">📋</span> Roster Viewer
+    </div>
+
+    <div class="nav-section">Analysis</div>
+    <div class="nav-item" data-page="intel">
+      <span class="nav-icon">🔬</span> League Intel
+    </div>
+  </div>
+
+  <div class="sidebar-footer">
+    <div>
+      <span class="status-dot"></span>
+      <span class="status-text" id="status-text">Loading...</span>
+    </div>
+    <div style="margin-top:6px; font-size:10px; color: var(--text3)" id="snapshot-age"></div>
+  </div>
+</nav>
+
+<!-- ── Main ────────────────────────────────────────── -->
+<div id="main">
+  <div class="topbar">
+    <div class="topbar-title" id="topbar-title">Standings</div>
+    <div class="topbar-meta">
+      <span id="meta-league">—</span>
+      <span>Season <span id="meta-season">—</span></span>
+      <span>Week <span id="meta-week">—</span></span>
+      <button class="refresh-btn" id="refresh-btn" onclick="refreshSnapshot()">↻ Refresh</button>
+    </div>
+  </div>
+
+  <!-- STANDINGS -->
+  <div class="page active" id="page-standings">
+    <div class="page-header">
+      <h1>Standings</h1>
+      <p>Current win/loss record and points</p>
+    </div>
+    <div class="card">
+      <div class="card-title">📊 League Standings</div>
+      <div id="standings-table"><div class="loading"><div class="spinner"></div>Loading...</div></div>
+    </div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div class="page" id="page-dashboard">
+    <div class="page-header">
+      <h1>Dashboard</h1>
+      <p>Power rankings and roster construction scores</p>
+    </div>
+    <div id="dashboard-kpis" class="kpi-grid"></div>
+    <div class="card">
+      <div class="card-title">🏗️ Roster Construction Rankings</div>
+      <div id="construction-table"><div class="loading"><div class="spinner"></div>Loading...</div></div>
+    </div>
+  </div>
+
+  <!-- DYNASTY TOOLS -->
+  <div class="page" id="page-dynasty">
+    <div class="page-header">
+      <h1>Dynasty Tools</h1>
+      <p>Contention windows, age curves, and dynasty trajectory</p>
+    </div>
+    <div class="card">
+      <div class="card-title">🏆 Contention Windows</div>
+      <div id="windows-chart"><div class="loading"><div class="spinner"></div>Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">📈 Age Curve Detail</div>
+      <div id="windows-detail"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
+  </div>
+
+  <!-- ROSTER VIEWER -->
+  <div class="page" id="page-roster">
+    <div class="page-header">
+      <h1>Roster Viewer</h1>
+      <p>Full franchise breakdown — construction score, age curve, players</p>
+    </div>
+    <select class="franchise-select" id="franchise-select" onchange="loadFranchise(this.value)">
+      <option value="">Select a franchise...</option>
+    </select>
+    <div id="franchise-detail"></div>
+  </div>
+
+  <!-- LEAGUE INTEL -->
+  <div class="page" id="page-intel">
+    <div class="page-header">
+      <h1>League Intel</h1>
+      <p>Age map and construction scores across all franchises</p>
+    </div>
+    <div class="card">
+      <div class="card-title">🗺️ League Age Map</div>
+      <div id="age-map"><div class="loading"><div class="spinner"></div>Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">🔬 Construction Score Breakdown</div>
+      <div id="intel-construction"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';  // same origin
+
+// ── State ──────────────────────────────────────────
+let state = {
+  snapshot: null,
+  standings: null,
+  construction: null,
+  windows: null,
+  franchises: [],
+};
+
+// ── Navigation ─────────────────────────────────────
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    item.classList.add('active');
+    const page = item.dataset.page;
+    document.getElementById('page-' + page).classList.add('active');
+    document.getElementById('topbar-title').textContent = item.textContent.trim();
+    renderPage(page);
+  });
+});
+
+// ── API helpers ────────────────────────────────────
+async function api(path) {
+  const r = await fetch(API + path);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+// ── Boot ───────────────────────────────────────────
+async function boot() {
+  try {
+    const health = await api('/health');
+    document.getElementById('meta-league').textContent = health.league || '—';
+    document.getElementById('meta-season').textContent = health.season || '—';
+    document.getElementById('meta-week').textContent = health.week || '—';
+    document.getElementById('status-text').textContent = 'Live';
+
+    if (!health.snapshot_loaded) {
+      document.getElementById('status-text').textContent = 'No snapshot';
+      return;
+    }
+
+    // Load all data in parallel
+    const [standings, construction, windows] = await Promise.all([
+      api('/api/contention-windows'),   // has franchise info
+      api('/api/roster-construction'),
+      api('/api/contention-windows'),
+    ]);
+
+    state.standings = await api('/api/contention-windows'); // reuse for franchise list
+    state.construction = construction;
+    state.windows = windows;
+    state.franchises = construction.map(c => ({ id: c.franchise_id, name: c.franchise_name }));
+
+    // Populate franchise selector
+    const sel = document.getElementById('franchise-select');
+    state.franchises.forEach(f => {
+      const opt = document.createElement('option');
+      opt.value = f.id;
+      opt.textContent = f.name;
+      sel.appendChild(opt);
+    });
+
+    // Snapshot age
+    const snapStatus = await api('/api/snapshot/status');
+    if (snapStatus.last_refreshed) {
+      const d = new Date(snapStatus.last_refreshed);
+      document.getElementById('snapshot-age').textContent =
+        'Snap: ' + d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    }
+
+    renderPage('standings');
+  } catch(e) {
+    document.getElementById('status-text').textContent = 'Error';
+    console.error(e);
+  }
+}
+
+// ── Refresh ────────────────────────────────────────
+async function refreshSnapshot() {
+  const btn = document.getElementById('refresh-btn');
+  btn.disabled = true;
+  btn.textContent = '↻ Refreshing...';
+  try {
+    await api('/api/snapshot/refresh');
+    // Reload data
+    state.construction = await api('/api/roster-construction');
+    state.windows = await api('/api/contention-windows');
+    btn.textContent = '✓ Done';
+    setTimeout(() => { btn.textContent = '↻ Refresh'; btn.disabled = false; }, 2000);
+    renderPage(document.querySelector('.nav-item.active').dataset.page);
+  } catch(e) {
+    btn.textContent = '✗ Failed';
+    btn.disabled = false;
+    setTimeout(() => { btn.textContent = '↻ Refresh'; }, 2000);
+  }
+}
+
+// ── Render dispatcher ──────────────────────────────
+function renderPage(page) {
+  if (page === 'standings') renderStandings();
+  if (page === 'dashboard') renderDashboard();
+  if (page === 'dynasty') renderDynasty();
+  if (page === 'intel') renderIntel();
+}
+
+// ── Helpers ────────────────────────────────────────
+function gradeClass(grade) {
+  if (!grade) return '';
+  if (grade.startsWith('A')) return 'badge-grade-a';
+  if (grade.startsWith('B')) return 'badge-grade-b';
+  if (grade.startsWith('C')) return 'badge-grade-c';
+  return 'badge-grade-d';
+}
+
+function windowClass(w) {
+  if (w === 'Contend Now') return 'badge-contend';
+  if (w === 'Transition') return 'badge-transition';
+  return 'badge-rebuild';
+}
+
+function scoreColor(score) {
+  if (score >= 70) return 'var(--green)';
+  if (score >= 55) return 'var(--blue)';
+  if (score >= 40) return 'var(--yellow)';
+  return 'var(--red)';
+}
+
+function scoreBar(score, max=100, color=null) {
+  const c = color || scoreColor(score);
+  const pct = Math.round((score/max)*100);
+  return `<div class="score-bar-wrap">
+    <div class="score-bar">
+      <div class="score-bar-fill" style="width:${pct}%;background:${c}"></div>
+    </div>
+    <div class="score-val">${score.toFixed(0)}</div>
+  </div>`;
+}
+
+// ── Standings ──────────────────────────────────────
+function renderStandings() {
+  if (!state.windows) return;
+  // Use construction for standings data since we don't have a dedicated standings endpoint yet
+  // We'll show W-L from windows (win_pct_score proxy) + construction grade
+  const rows = state.construction.map((c,i) => {
+    const w = state.windows.find(x => x.franchise_id === c.franchise_id);
+    const wins = w ? Math.round((w.win_pct_score/100) * 1) : 0; // preseason all 0-0
+    return `<tr>
+      <td><span class="rank-num ${i<3?'top3':''}">${i+1}</span></td>
+      <td class="name">${c.franchise_name}</td>
+      <td class="num">0</td>
+      <td class="num">0</td>
+      <td class="num">0</td>
+      <td class="num">0.0</td>
+      <td class="num">0.0</td>
+      <td><span class="badge ${windowClass(w?.window||'Rebuild')}">${w?.window||'—'}</span></td>
+      <td><span class="badge ${gradeClass(c.grade)}">${c.grade}</span></td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('standings-table').innerHTML = `
+    <table class="data-table">
+      <thead><tr>
+        <th>#</th><th>Franchise</th>
+        <th class="num">W</th><th class="num">L</th><th class="num">T</th>
+        <th class="num">PF</th><th class="num">PA</th>
+        <th>Window</th><th>Grade</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ── Dashboard ──────────────────────────────────────
+function renderDashboard() {
+  if (!state.construction || !state.windows) return;
+
+  const contendNow = state.windows.filter(w => w.window === 'Contend Now').length;
+  const avgScore = state.construction.reduce((s,c)=>s+c.total_score,0) / state.construction.length;
+  const topTeam = state.construction[0];
+
+  document.getElementById('dashboard-kpis').innerHTML = `
+    <div class="kpi"><div class="kpi-label">Top Roster</div>
+      <div class="kpi-value" style="font-size:14px">${topTeam.franchise_name}</div>
+      <div class="kpi-sub">${topTeam.total_score.toFixed(1)}/100 · ${topTeam.grade}</div></div>
+    <div class="kpi"><div class="kpi-label">Contend Now</div>
+      <div class="kpi-value accent">${contendNow}</div>
+      <div class="kpi-sub">of ${state.windows.length} teams</div></div>
+    <div class="kpi"><div class="kpi-label">League Avg Score</div>
+      <div class="kpi-value">${avgScore.toFixed(1)}</div>
+      <div class="kpi-sub">construction score</div></div>
+    <div class="kpi"><div class="kpi-label">Season</div>
+      <div class="kpi-value">${document.getElementById('meta-season').textContent}</div>
+      <div class="kpi-sub">Week ${document.getElementById('meta-week').textContent}</div></div>
+  `;
+
+  const rows = state.construction.map((c,i) => {
+    const w = state.windows.find(x => x.franchise_id === c.franchise_id);
+    return `<tr>
+      <td><span class="rank-num ${i<3?'top3':''}">${c.rank}</span></td>
+      <td class="name">${c.franchise_name}</td>
+      <td>${scoreBar(c.total_score)}</td>
+      <td><span class="badge ${gradeClass(c.grade)}">${c.grade}</span></td>
+      <td class="num">${c.wr.raw_score.toFixed(0)}</td>
+      <td class="num">${c.rb.raw_score.toFixed(0)}</td>
+      <td class="num">${c.qb.raw_score.toFixed(0)}</td>
+      <td class="num">${c.te.raw_score.toFixed(0)}</td>
+      <td class="num">${c.capital.raw_score.toFixed(0)}</td>
+      <td><span class="badge ${windowClass(w?.window||'Rebuild')}">${w?.window||'—'}</span></td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('construction-table').innerHTML = `
+    <table class="data-table">
+      <thead><tr>
+        <th>#</th><th>Franchise</th><th style="min-width:140px">Score</th>
+        <th>Grade</th>
+        <th class="num">WR</th><th class="num">RB</th>
+        <th class="num">QB</th><th class="num">TE</th>
+        <th class="num">CAP</th><th>Window</th>
+      </tr></thead>
+      <tbody class="fade-in">${rows}</tbody>
+    </table>`;
+}
+
+// ── Dynasty Tools ──────────────────────────────────
+function renderDynasty() {
+  if (!state.windows) return;
+
+  // Window chart
+  const chart = state.windows.map(w => {
+    const c = w.window === 'Contend Now' ? 'var(--green)' :
+              w.window === 'Transition' ? 'var(--yellow)' : 'var(--red)';
+    return `<div class="window-row">
+      <div class="window-name">${w.franchise_name}</div>
+      <div class="window-bar-wrap">${scoreBar(w.window_score, 100, c)}</div>
+      <span class="badge ${windowClass(w.window)}" style="min-width:90px;text-align:center">${w.window}</span>
+      <span class="muted mono" style="font-size:10px;min-width:50px;text-align:right">${w.young_core_count} u25</span>
+    </div>`;
+  }).join('');
+  document.getElementById('windows-chart').innerHTML = `<div class="fade-in">${chart}</div>`;
+
+  // Detail table
+  const rows = state.windows.map(w => `<tr>
+    <td class="name">${w.franchise_name}</td>
+    <td><span class="badge ${windowClass(w.window)}">${w.window}</span></td>
+    <td class="num">${w.window_score.toFixed(1)}</td>
+    <td class="num">${w.qb_curve.avg_age||'—'}</td>
+    <td class="num">${w.rb_curve.avg_age||'—'}</td>
+    <td class="num">${w.wr_curve.avg_age||'—'}</td>
+    <td class="num">${w.te_curve.avg_age||'—'}</td>
+    <td class="num">${w.roster_avg_age||'—'}</td>
+    <td class="num accent">${w.young_core_count}</td>
+  </tr>`).join('');
+
+  document.getElementById('windows-detail').innerHTML = `
+    <table class="data-table fade-in">
+      <thead><tr>
+        <th>Franchise</th><th>Window</th><th class="num">Score</th>
+        <th class="num">QB Age</th><th class="num">RB Age</th>
+        <th class="num">WR Age</th><th class="num">TE Age</th>
+        <th class="num">Avg Age</th><th class="num accent">U25</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ── Roster Viewer ──────────────────────────────────
+async function loadFranchise(id) {
+  if (!id) { document.getElementById('franchise-detail').innerHTML = ''; return; }
+  document.getElementById('franchise-detail').innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+  try {
+    const f = await api('/api/franchise/' + id);
+    const c = f.construction;
+    const w = f.contention_window;
+
+    const posCards = ['qb','rb','wr','te','capital'].map(pos => {
+      const g = c[pos];
+      return `<div class="pos-card">
+        <div class="pos-label">${g.position}</div>
+        <div class="pos-score">${g.raw_score.toFixed(0)}</div>
+        <div class="pos-grade"><span class="badge ${gradeClass(g.grade)}">${g.grade}</span></div>
+      </div>`;
+    }).join('');
+
+    const playerRows = f.roster.skill_players.map(p => {
+      const posClass = `pos-${p.position}`;
+      return `<div class="player-row">
+        <span class="player-pos ${posClass}">${p.position}</span>
+        <span class="player-name">${p.name}</span>
+        <span class="player-team">${p.nfl_team}</span>
+        <span class="player-age">${p.age ? 'age '+p.age : '—'}</span>
+      </div>`;
+    }).join('');
+
+    document.getElementById('franchise-detail').innerHTML = `
+      <div class="fade-in">
+        <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr)">
+          <div class="kpi">
+            <div class="kpi-label">Construction Score</div>
+            <div class="kpi-value">${c.total_score}</div>
+            <div class="kpi-sub">${c.grade} · Rank #${c.rank}</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Contention Window</div>
+            <div class="kpi-value" style="font-size:15px">${w.window}</div>
+            <div class="kpi-sub">${w.window_score.toFixed(1)}/100</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Roster</div>
+            <div class="kpi-value">${f.roster.total_slots}</div>
+            <div class="kpi-sub">${f.young_core_count} under 25 · avg age ${f.avg_age||'—'}</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Position Scores</div>
+          <div class="pos-grid">${posCards}</div>
+          ${c.strengths.length ? `<div style="margin-top:8px;font-size:11px;color:var(--green)">✓ ${c.strengths.join(' · ')}</div>` : ''}
+          ${c.weaknesses.length ? `<div style="margin-top:4px;font-size:11px;color:var(--red)">⚠ ${c.weaknesses.join(' · ')}</div>` : ''}
+        </div>
+
+        <div class="card">
+          <div class="card-title">📋 Roster (${f.roster.total_slots} players)</div>
+          <div class="player-list">${playerRows}</div>
+        </div>
+
+        <div class="card">
+          <div class="card-title">Dynasty Outlook</div>
+          <div style="font-size:12px;color:var(--text2);line-height:1.7">${w.recommendation}</div>
+          <div style="margin-top:12px">
+            <table class="data-table">
+              <thead><tr>
+                <th>Position</th><th class="num">Avg Age</th>
+                <th class="num">In Peak</th><th class="num">Under 25</th>
+                <th class="num">Past Cliff</th>
+              </tr></thead>
+              <tbody>
+                ${['qb_curve','rb_curve','wr_curve','te_curve'].map(k => {
+                  const g = w[k];
+                  return `<tr>
+                    <td class="name">${g.position}</td>
+                    <td class="num">${g.avg_age||'—'}</td>
+                    <td class="num accent">${g.peak_count}</td>
+                    <td class="num">${g.young_count}</td>
+                    <td class="num" style="color:var(--red)">${g.aging_count}</td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>`;
+  } catch(e) {
+    document.getElementById('franchise-detail').innerHTML = `<div class="empty">Error loading franchise: ${e.message}</div>`;
+  }
+}
+
+// ── League Intel ───────────────────────────────────
+function renderIntel() {
+  if (!state.construction || !state.windows) return;
+
+  // Age map — sorted by avg age
+  const ageData = state.windows
+    .filter(w => w.roster_avg_age)
+    .sort((a,b) => a.roster_avg_age - b.roster_avg_age);
+
+  const ageRows = ageData.map(w => {
+    const ageColor = w.roster_avg_age < 25 ? 'var(--green)' :
+                     w.roster_avg_age < 27 ? 'var(--blue)' :
+                     w.roster_avg_age < 29 ? 'var(--yellow)' : 'var(--red)';
+    return `<tr>
+      <td class="name">${w.franchise_name}</td>
+      <td>${scoreBar(w.roster_avg_age, 35, ageColor)}</td>
+      <td class="num">${w.qb_curve.avg_age||'—'}</td>
+      <td class="num">${w.rb_curve.avg_age||'—'}</td>
+      <td class="num">${w.wr_curve.avg_age||'—'}</td>
+      <td class="num">${w.te_curve.avg_age||'—'}</td>
+      <td class="num accent">${w.young_core_count}</td>
+      <td><span class="badge ${windowClass(w.window)}">${w.window}</span></td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('age-map').innerHTML = `
+    <table class="data-table fade-in">
+      <thead><tr>
+        <th>Franchise</th><th style="min-width:140px">Avg Age</th>
+        <th class="num">QB</th><th class="num">RB</th>
+        <th class="num">WR</th><th class="num">TE</th>
+        <th class="num accent">U25</th><th>Window</th>
+      </tr></thead>
+      <tbody>${ageRows}</tbody>
+    </table>`;
+
+  // Construction breakdown
+  const conRows = state.construction.map((c,i) => `<tr>
+    <td><span class="rank-num ${i<3?'top3':''}">${c.rank}</span></td>
+    <td class="name">${c.franchise_name}</td>
+    <td class="num">${c.wr.raw_score.toFixed(0)}</td>
+    <td class="num">${c.rb.raw_score.toFixed(0)}</td>
+    <td class="num">${c.qb.raw_score.toFixed(0)}</td>
+    <td class="num">${c.te.raw_score.toFixed(0)}</td>
+    <td class="num">${c.capital.raw_score.toFixed(0)}</td>
+    <td>${scoreBar(c.total_score)}</td>
+    <td><span class="badge ${gradeClass(c.grade)}">${c.grade}</span></td>
+  </tr>`).join('');
+
+  document.getElementById('intel-construction').innerHTML = `
+    <table class="data-table fade-in">
+      <thead><tr>
+        <th>#</th><th>Franchise</th>
+        <th class="num">WR</th><th class="num">RB</th>
+        <th class="num">QB</th><th class="num">TE</th>
+        <th class="num">CAP</th>
+        <th style="min-width:140px">Total</th><th>Grade</th>
+      </tr></thead>
+      <tbody>${conRows}</tbody>
+    </table>`;
+}
+
+// ── Init ───────────────────────────────────────────
+boot();
+</script>
+</body>
+</html>
