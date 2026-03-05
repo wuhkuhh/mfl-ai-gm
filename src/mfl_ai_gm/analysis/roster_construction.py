@@ -312,6 +312,8 @@ def _score_te(tes: list[Player]) -> PositionGroupScore:
     - Having 1 proven TE: solid base
     - Depth at TE: modest bonus (streaming is acceptable)
     - Age: TEs peak later (25–30), so age curve is different
+    - Starter = youngest prime-window TE (best proxy without rankings)
+    - Excess TEs (5+) penalized slightly — roster space waste
     """
     notes = []
     score = 0.0
@@ -320,35 +322,59 @@ def _score_te(tes: list[Player]) -> PositionGroupScore:
         notes.append("No TE on roster — must stream weekly")
         return PositionGroupScore("TE", 20.0, 20.0 * WEIGHTS["te"], WEIGHTS["te"], 0, None, notes)
 
-    # Base for having a TE at all
+    # Sort: prime-window TEs first (25–30), then young, then old
+    def te_sort_key(p: Player) -> tuple:
+        age = p.age or 99
+        in_prime = 25 <= age <= 30
+        return (not in_prime, abs(age - 27))
+
+    sorted_tes = sorted(tes, key=te_sort_key)
+    starter_te = sorted_tes[0]
+    backups = sorted_tes[1:]
+
+    # Base for having a starter
     score += 40.0
 
-    # Depth
-    if len(tes) >= 2:
-        score += 20.0
-        notes.append(f"{len(tes)} TEs rostered — good depth")
-    else:
-        notes.append("1 TE — streaming backup needed")
-
-    if len(tes) >= 3:
-        score += 10.0
-
-    # TE age curve peaks later — 25–30 is prime for TEs
-    starter_te = tes[0]
+    # Starter age score — TEs peak 25–30
     te_age = starter_te.age
     if te_age:
         if 25 <= te_age <= 30:
-            score += 15.0
-            notes.append(f"Starter TE in prime window (age {te_age})")
-        elif te_age < 25:
+            score += 20.0
+            notes.append(f"Starter in prime window (age {te_age})")
+        elif 23 <= te_age < 25:
+            score += 12.0
+            notes.append(f"Young starter TE (age {te_age}) — upside")
+        elif 31 <= te_age <= 33:
+            score += 5.0
+            notes.append(f"Veteran starter TE (age {te_age}) — monitor decline")
+        elif te_age > 33:
+            score -= 10.0
+            notes.append(f"Aging starter TE (age {te_age}) — dynasty liability")
+        else:
             score += 8.0
-            notes.append(f"Young TE (age {te_age}) — upside play")
-        elif te_age > 32:
-            score *= 0.85
-            notes.append(f"Aging starter TE (age {te_age}) — monitor")
+
+    # Depth: 1 backup is ideal, 2 is fine, 4+ is roster bloat
+    if len(backups) == 0:
+        notes.append("No TE backup — injury vulnerable")
+    elif len(backups) == 1:
+        score += 15.0
+        notes.append("1 TE backup — solid depth")
+    elif len(backups) <= 3:
+        score += 18.0
+        notes.append(f"{len(backups)} TE backups — good depth")
+    else:
+        score += 12.0
+        notes.append(f"{len(backups)} TE backups — consider trimming for roster space")
+
+    # Young TE stash bonus (dynasty upside)
+    young_tes = [p for p in backups if p.age is not None and p.age <= 24]
+    if young_tes:
+        score += min(len(young_tes), 2) * 4.0
+        names = ", ".join(p.name.split(",")[0] for p in young_tes[:2])
+        notes.append(f"Young TE stash: {names}")
 
     score = _clamp(score)
-    notes.insert(0, f"Starter: {starter_te.name}")
+    notes.insert(0, f"Starter: {starter_te.name} (age {starter_te.age or '?'})")
     return PositionGroupScore(
         "TE", score, score * WEIGHTS["te"], WEIGHTS["te"],
         len(tes), _avg_age(tes), notes
