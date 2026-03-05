@@ -2,7 +2,7 @@
 Layer 6 — Service
 FastAPI application entry point. Thin routing only — no business logic here.
 
-Port: 8001 (baseball is on 8000)
+Port: 8002 (baseball yahoo-ai-gm is on 8001)
 systemd service: mfl-ai-gm
 """
 
@@ -14,19 +14,18 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from service.routers import analysis, franchise, snapshot
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Lifespan — load snapshot on startup
-# ---------------------------------------------------------------------------
+STATIC_DIR = Path(__file__).parent / "static"
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load snapshot into app state on startup."""
     from mfl_ai_gm.snapshot.builder import DEFAULT_SNAPSHOT_PATH, load_snapshot
     logger.info("mfl-ai-gm service starting...")
 
@@ -43,17 +42,15 @@ async def lifespan(app: FastAPI):
             logger.warning("Failed to load snapshot on startup: %s", e)
             app.state.snapshot = None
     else:
-        logger.warning("No snapshot found at %s — call /api/snapshot/refresh first", DEFAULT_SNAPSHOT_PATH)
+        logger.warning(
+            "No snapshot found at %s — call POST /api/snapshot/refresh first",
+            DEFAULT_SNAPSHOT_PATH,
+        )
         app.state.snapshot = None
 
     yield
-
     logger.info("mfl-ai-gm service shutting down.")
 
-
-# ---------------------------------------------------------------------------
-# App
-# ---------------------------------------------------------------------------
 
 app = FastAPI(
     title="MFL AI GM",
@@ -69,22 +66,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------------------------------------------------------------------------
-# Routers
-# ---------------------------------------------------------------------------
-
 app.include_router(snapshot.router, prefix="/api/snapshot", tags=["Snapshot"])
 app.include_router(analysis.router, prefix="/api", tags=["Analysis"])
 app.include_router(franchise.router, prefix="/api/franchise", tags=["Franchise"])
 
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-# ---------------------------------------------------------------------------
-# Health check
-# ---------------------------------------------------------------------------
+
+@app.get("/", include_in_schema=False)
+async def serve_ui():
+    index = STATIC_DIR / "index.html"
+    if index.exists():
+        return FileResponse(index)
+    return JSONResponse({"service": "mfl-ai-gm", "docs": "/docs", "ui": "index.html not found"})
+
 
 @app.get("/health", tags=["Health"])
 async def health():
-    from fastapi import Request
     snapshot = app.state.snapshot
     return {
         "status": "ok",
@@ -96,18 +95,3 @@ async def health():
         "week": snapshot.week if snapshot else None,
         "franchises": len(snapshot.franchises) if snapshot else 0,
     }
-
-
-@app.get("/", tags=["Health"])
-async def root():
-    return JSONResponse({
-        "service": "mfl-ai-gm",
-        "docs": "/docs",
-        "health": "/health",
-        "endpoints": [
-            "GET  /api/roster-construction",
-            "GET  /api/contention-windows",
-            "GET  /api/franchise/{franchise_id}",
-            "POST /api/snapshot/refresh",
-        ]
-    })
