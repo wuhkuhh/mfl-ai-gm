@@ -67,6 +67,7 @@ class FCPlayerValue:
     )
 
     def __init__(self, raw: dict):
+        """Construct from raw FantasyCalc API response dict."""
         p = raw.get("player", {})
         self.fc_id: int = p.get("id", 0)
         self.name: str = p.get("name", "")
@@ -81,6 +82,25 @@ class FCPlayerValue:
         self.trend_30d: int = raw.get("trend30Day", 0)
         self.redraft_value: int = raw.get("redraftValue", 0)
         self.tier: Optional[int] = raw.get("maybeTier")
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "FCPlayerValue":
+        """Reconstruct from cached flat dict (to_dict format)."""
+        obj = cls.__new__(cls)
+        obj.fc_id = d.get("fc_id", 0)
+        obj.name = d.get("name", "")
+        obj.mfl_id = d.get("mfl_id")
+        obj.sleeper_id = d.get("sleeper_id")
+        obj.position = d.get("position", "")
+        obj.nfl_team = d.get("nfl_team", "FA")
+        obj.age = d.get("age")
+        obj.value = d.get("value", 0)
+        obj.overall_rank = d.get("overall_rank", 999)
+        obj.position_rank = d.get("position_rank", 999)
+        obj.trend_30d = d.get("trend_30d", 0)
+        obj.redraft_value = d.get("redraft_value", 0)
+        obj.tier = d.get("tier")
+        return obj
 
     def to_dict(self) -> dict:
         return {
@@ -131,10 +151,11 @@ def _save_cache(data: list[dict], cache_path: Path) -> None:
     logger.info("FantasyCalc cache saved: %d players → %s", len(data), cache_path)
 
 
-def _load_cache(cache_path: Path) -> list[dict]:
+def _load_cache(cache_path: Path) -> list[FCPlayerValue]:
+    """Load from flat-dict cache format using from_dict."""
     with open(cache_path) as f:
         payload = json.load(f)
-    return payload.get("players", [])
+    return [FCPlayerValue.from_dict(d) for d in payload.get("players", [])]
 
 
 # ---------------------------------------------------------------------------
@@ -149,17 +170,12 @@ def fetch_fc_values(
     Fetch dynasty player values from FantasyCalc.
     Uses disk cache (TTL 24h) to avoid hammering the API.
 
-    Args:
-        cache_path: Where to store/read the JSON cache.
-        force_refresh: Bypass cache TTL and refetch.
-
     Returns:
         List of FCPlayerValue objects sorted by overall_rank ascending.
     """
     if not force_refresh and _cache_is_fresh(cache_path):
         logger.info("Loading FantasyCalc values from cache: %s", cache_path)
-        raw_list = _load_cache(cache_path)
-        return [FCPlayerValue(r) for r in raw_list]
+        return _load_cache(cache_path)
 
     logger.info("Fetching FantasyCalc values from API...")
     try:
@@ -167,30 +183,27 @@ def fetch_fc_values(
         resp.raise_for_status()
         raw_list = resp.json()
     except requests.RequestException as e:
-        # If fetch fails but cache exists, fall back to stale cache
         if cache_path.exists():
             logger.warning("FantasyCalc fetch failed (%s) — using stale cache", e)
-            raw_list = _load_cache(cache_path)
-        else:
-            raise RuntimeError(f"FantasyCalc fetch failed and no cache available: {e}") from e
+            return _load_cache(cache_path)
+        raise RuntimeError(f"FantasyCalc fetch failed and no cache available: {e}") from e
 
     players = [FCPlayerValue(r) for r in raw_list]
     players.sort(key=lambda p: p.overall_rank)
 
-    # Save to cache
     _save_cache([p.to_dict() for p in players], cache_path)
 
-    logger.info("FantasyCalc: %d players fetched, top player: %s", len(players), players[0].name if players else "none")
+    logger.info(
+        "FantasyCalc: %d players fetched, top player: %s",
+        len(players), players[0].name if players else "none",
+    )
     return players
 
 
 def build_mfl_value_map(
     players: list[FCPlayerValue],
 ) -> dict[str, FCPlayerValue]:
-    """
-    Build a dict keyed by MFL player ID → FCPlayerValue.
-    Used to look up dynasty value for any player on a roster.
-    """
+    """Build dict of mfl_id → FCPlayerValue for roster lookups."""
     return {p.mfl_id: p for p in players if p.mfl_id}
 
 
@@ -222,13 +235,14 @@ if __name__ == "__main__":
     players = fetch_fc_values(force_refresh=force)
 
     print(f"\nFantasyCalc Dynasty Values — {len(players)} players")
-    print(f"{'#':<5} {'Player':<28} {'Pos':<5} {'Team':<5} {'Age':<6} {'Value':<8} {'Trend':<8} {'Tier'}")
+    print(f"{'#':<5} {'Player':<28} {'Pos':<5} {'Team':<5} {'Age':<6} {'Value':<8} {'Trend':<8} Tier")
     print("-" * 75)
     for p in players[:30]:
         age_str = f"{p.age:.1f}" if p.age else "?"
-        trend_str = f"{p.trend_30d:+d}"
-        print(f"{p.overall_rank:<5} {p.name:<28} {p.position:<5} {p.nfl_team:<5} {age_str:<6} {p.value:<8} {trend_str:<8} {p.tier or '—'}")
+        print(
+            f"{p.overall_rank:<5} {p.name:<28} {p.position:<5} {p.nfl_team:<5} "
+            f"{age_str:<6} {p.value:<8} {p.trend_30d:+d:<8} {p.tier or '—'}"
+        )
 
-    # Show MFL ID coverage
     with_mfl = sum(1 for p in players if p.mfl_id)
-    print(f"\nMFL ID coverage: {with_mfl}/{len(players)} players ({100*with_mfl//len(players)}%)")
+    print(f"\nMFL ID coverage: {with_mfl}/{len(players)} ({100*with_mfl//len(players)}%)")
