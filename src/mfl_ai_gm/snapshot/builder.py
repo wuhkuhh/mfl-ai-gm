@@ -83,12 +83,21 @@ def _parse_franchise(raw: dict[str, Any]) -> Franchise:
 
 def _parse_player(raw: dict[str, Any]) -> Player:
     """Parse a single player dict from the players response."""
+    from datetime import datetime, timezone
     position = raw.get("position", "")
-    age_raw = raw.get("age")
-    try:
-        age = int(age_raw) if age_raw and str(age_raw).strip() else None
-    except (ValueError, TypeError):
-        age = None
+
+    # MFL returns birthdate as Unix timestamp string, not age directly
+    age = None
+    birthdate_raw = raw.get("birthdate")
+    if birthdate_raw:
+        try:
+            birthdate = datetime.fromtimestamp(int(birthdate_raw), tz=timezone.utc)
+            today = datetime.now(timezone.utc)
+            age = today.year - birthdate.year - (
+                (today.month, today.day) < (birthdate.month, birthdate.day)
+            )
+        except (ValueError, TypeError, OSError):
+            age = None
 
     return Player(
         id=raw["id"],

@@ -16,6 +16,7 @@ from typing import Optional
 
 # MFL position codes that represent team-level units, not individual players
 TEAM_UNIT_POSITIONS = frozenset({
+    "Def",                               # team defense (capital D variant)
     "TMQB", "TMRB", "TMWR", "TMTE", "TMPK",   # team offense units
     "TMDL", "TMLB", "TMDB",                     # team defense units
     "TMKR",                                      # team kicker unit
