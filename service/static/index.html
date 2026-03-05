@@ -61,6 +61,10 @@
   .badge-grade-b{background:#60a5fa20;color:var(--blue)}
   .badge-grade-c{background:#fbbf2420;color:var(--yellow)}
   .badge-grade-d{background:#f8717120;color:var(--red)}
+  .badge-strong-sell{background:#f8717130;color:var(--red);border:1px solid #f8717150}
+  .badge-consider{background:#fbbf2430;color:var(--yellow);border:1px solid #fbbf2450}
+  .badge-hold{background:#60a5fa20;color:var(--blue);border:1px solid #60a5fa40}
+  .badge-buy{background:#34d39920;color:var(--green);border:1px solid #34d39940}
   .score-bar-wrap{display:flex;align-items:center;gap:8px}
   .score-bar{flex:1;height:4px;background:var(--border2);border-radius:2px;overflow:hidden}
   .score-bar-fill{height:100%;border-radius:2px;transition:width .6s ease}
@@ -101,10 +105,14 @@
   .waiver-rank{width:24px;font-size:11px;color:var(--text3);text-align:right;font-variant-numeric:tabular-nums}
   .waiver-name{flex:1;color:var(--text);font-family:var(--font-head);font-size:13px;font-weight:600}
   .waiver-reason{font-size:10px;color:var(--text3);flex:1}
-  .waiver-score{font-size:11px;font-variant-numeric:tabular-nums;min-width:40px;text-align:right}
   .preseason-notice{background:#fbbf2410;border:1px solid #fbbf2430;border-radius:6px;padding:14px 16px;font-size:12px;color:var(--yellow);margin-bottom:16px}
   .franchise-select{background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:4px;font-family:var(--font-mono);font-size:12px;cursor:pointer;margin-bottom:20px;width:100%;max-width:320px}
   .franchise-select:focus{outline:none;border-color:var(--accent)}
+  .filter-btn{background:var(--bg3);border:1px solid var(--border2);color:var(--text2);padding:6px 12px;border-radius:4px;cursor:pointer;font-family:var(--font-mono);font-size:11px;transition:all .15s;margin-right:6px;margin-bottom:12px}
+  .filter-btn:hover,.filter-btn.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
+  .trend-up{color:var(--green)}
+  .trend-dn{color:var(--red)}
+  .trend-flat{color:var(--text3)}
   .loading{display:flex;align-items:center;justify-content:center;padding:60px;color:var(--text3);flex-direction:column;gap:12px}
   .spinner{width:24px;height:24px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
@@ -133,6 +141,7 @@
     <div class="nav-section">Dynasty</div>
     <div class="nav-item" data-page="dynasty"><span class="nav-icon">🏆</span> Dynasty Tools</div>
     <div class="nav-item" data-page="roster"><span class="nav-icon">📋</span> Roster Viewer</div>
+    <div class="nav-item" data-page="values"><span class="nav-icon">💰</span> Values</div>
     <div class="nav-section">Weekly</div>
     <div class="nav-item" data-page="waivers"><span class="nav-icon">🔍</span> Waivers</div>
     <div class="nav-section">Analysis</div>
@@ -196,6 +205,35 @@
     <div id="franchise-detail"></div>
   </div>
 
+  <!-- VALUES -->
+  <div class="page" id="page-values">
+    <div class="page-header"><h1>Values</h1><p>FantasyCalc dynasty trade values + sell-high signals</p></div>
+    <div class="card">
+      <div class="card-title">🔥 League-Wide Sell-High Signals</div>
+      <div id="sell-all-table"><div class="loading"><div class="spinner"></div>Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">
+        💰 Dynasty Value Rankings
+        <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap" id="pos-filters">
+          <button class="filter-btn active" onclick="filterValues('')">All</button>
+          <button class="filter-btn" onclick="filterValues('QB')">QB</button>
+          <button class="filter-btn" onclick="filterValues('RB')">RB</button>
+          <button class="filter-btn" onclick="filterValues('WR')">WR</button>
+          <button class="filter-btn" onclick="filterValues('TE')">TE</button>
+        </span>
+      </div>
+      <div id="values-table"><div class="loading"><div class="spinner"></div>Loading...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">🎯 Sell-High by Franchise</div>
+      <select class="franchise-select" id="sell-franchise-select" onchange="loadSellHigh(this.value)">
+        <option value="">Select a franchise...</option>
+      </select>
+      <div id="sell-detail"></div>
+    </div>
+  </div>
+
   <!-- WAIVERS -->
   <div class="page" id="page-waivers">
     <div class="page-header"><h1>Waivers</h1><p>Free agent recommendations ranked by roster need and dynasty value</p></div>
@@ -221,7 +259,7 @@
 
 <script>
 const API='';
-let state={construction:null,windows:null,franchises:[]};
+let state={construction:null,windows:null,franchises:[],fcValues:[],sellReports:[]};
 
 document.querySelectorAll('.nav-item').forEach(item=>{
   item.addEventListener('click',()=>{
@@ -245,15 +283,25 @@ async function boot(){
     document.getElementById('meta-week').textContent=health.week||'—';
     document.getElementById('status-text').textContent='Live';
     if(!health.snapshot_loaded){document.getElementById('status-text').textContent='No snapshot';return}
-    const[construction,windows]=await Promise.all([api('/api/roster-construction'),api('/api/contention-windows')]);
+
+    const[construction,windows,fcValues,sellReports]=await Promise.all([
+      api('/api/roster-construction'),
+      api('/api/contention-windows'),
+      api('/api/values'),
+      api('/api/sell-high'),
+    ]);
     state.construction=construction;state.windows=windows;
+    state.fcValues=fcValues;state.sellReports=sellReports;
     state.franchises=construction.map(c=>({id:c.franchise_id,name:c.franchise_name}));
-    ['franchise-select','waiver-franchise-select'].forEach(selId=>{
+
+    ['franchise-select','waiver-franchise-select','sell-franchise-select'].forEach(selId=>{
       const sel=document.getElementById(selId);
       state.franchises.forEach(f=>{const opt=document.createElement('option');opt.value=f.id;opt.textContent=f.name;sel.appendChild(opt)});
     });
+
     const snap=await api('/api/snapshot/status');
     if(snap.last_refreshed){const d=new Date(snap.last_refreshed);document.getElementById('snapshot-age').textContent='Snap: '+d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
+
     renderPage('standings');
   }catch(e){document.getElementById('status-text').textContent='Error';console.error(e)}
 }
@@ -275,6 +323,7 @@ function renderPage(page){
   if(page==='dashboard')renderDashboard();
   if(page==='dynasty')renderDynasty();
   if(page==='intel')renderIntel();
+  if(page==='values')renderValues();
 }
 
 function gradeClass(g){if(!g)return '';if(g.startsWith('A'))return 'badge-grade-a';if(g.startsWith('B'))return 'badge-grade-b';if(g.startsWith('C'))return 'badge-grade-c';return 'badge-grade-d'}
@@ -283,6 +332,15 @@ function scoreColor(s){if(s>=70)return 'var(--green)';if(s>=55)return 'var(--blu
 function scoreBar(score,max=100,color=null){
   const c=color||scoreColor(score),pct=Math.round((score/max)*100);
   return `<div class="score-bar-wrap"><div class="score-bar"><div class="score-bar-fill" style="width:${pct}%;background:${c}"></div></div><div class="score-val">${typeof score==='number'?score.toFixed(1):score}</div></div>`
+}
+function trendHtml(t){
+  if(t>0)return `<span class="trend-up">▲ ${t}</span>`;
+  if(t<0)return `<span class="trend-dn">▼ ${Math.abs(t)}</span>`;
+  return `<span class="trend-flat">— 0</span>`;
+}
+function signalBadge(s){
+  const cls=s==='Strong Sell'?'badge-strong-sell':s==='Consider Selling'?'badge-consider':s==='Hold'?'badge-hold':'badge-buy';
+  return `<span class="badge ${cls}">${s}</span>`;
 }
 
 function renderStandings(){
@@ -303,7 +361,7 @@ function renderDashboard(){
     <div class="kpi"><div class="kpi-label">Top Roster</div><div class="kpi-value" style="font-size:14px">${top.franchise_name}</div><div class="kpi-sub">${top.total_score.toFixed(1)}/100 · ${top.grade}</div></div>
     <div class="kpi"><div class="kpi-label">Contend Now</div><div class="kpi-value accent">${contendNow}</div><div class="kpi-sub">of ${state.windows.length} teams</div></div>
     <div class="kpi"><div class="kpi-label">League Avg Score</div><div class="kpi-value">${avgScore.toFixed(1)}</div><div class="kpi-sub">construction score</div></div>
-    <div class="kpi"><div class="kpi-label">Season</div><div class="kpi-value">${document.getElementById('meta-season').textContent}</div><div class="kpi-sub">Week ${document.getElementById('meta-week').textContent}</div></div>`;
+    <div class="kpi"><div class="kpi-label">FC Values</div><div class="kpi-value">${state.fcValues.length}</div><div class="kpi-sub">dynasty players tracked</div></div>`;
   const rows=state.construction.map((c,i)=>{
     const w=state.windows.find(x=>x.franchise_id===c.franchise_id);
     return `<tr><td><span class="rank-num ${i<3?'top3':''}">${c.rank}</span></td><td class="name">${c.franchise_name}</td><td>${scoreBar(c.total_score)}</td><td><span class="badge ${gradeClass(c.grade)}">${c.grade}</span></td><td class="num">${c.wr.raw_score.toFixed(0)}</td><td class="num">${c.rb.raw_score.toFixed(0)}</td><td class="num">${c.qb.raw_score.toFixed(0)}</td><td class="num">${c.te.raw_score.toFixed(0)}</td><td class="num">${c.capital.raw_score.toFixed(0)}</td><td><span class="badge ${windowClass(w?.window||'Rebuild')}">${w?.window||'—'}</span></td></tr>`;
@@ -343,6 +401,110 @@ async function loadFranchise(id){
   }catch(e){document.getElementById('franchise-detail').innerHTML=`<div class="empty">Error: ${e.message}</div>`}
 }
 
+// ── Values page ──────────────────────────────────────────────────────────────
+let _valuesPos='';
+
+function renderValues(){
+  renderSellAll();
+  renderValuesTable(_valuesPos);
+}
+
+function filterValues(pos){
+  _valuesPos=pos;
+  document.querySelectorAll('#pos-filters .filter-btn').forEach(b=>{
+    b.classList.toggle('active', b.textContent===(pos||'All'));
+  });
+  renderValuesTable(pos);
+}
+
+function renderValuesTable(pos){
+  const players=pos?state.fcValues.filter(p=>p.position===pos):state.fcValues;
+  const rows=players.slice(0,100).map(p=>{
+    const age=p.age?p.age.toFixed(1):'?';
+    return `<tr>
+      <td class="num">${p.overall_rank}</td>
+      <td class="name">${p.name}</td>
+      <td><span class="player-pos pos-${p.position}" style="width:auto;padding:2px 6px">${p.position}</span></td>
+      <td class="muted">${p.nfl_team}</td>
+      <td class="num">${age}</td>
+      <td class="num accent">${p.value.toLocaleString()}</td>
+      <td class="num">${trendHtml(p.trend_30d)}</td>
+      <td class="num muted">${p.redraft_value.toLocaleString()}</td>
+      <td class="num">${p.tier||'—'}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('values-table').innerHTML=`
+    <table class="data-table fade-in">
+      <thead><tr>
+        <th class="num">#</th><th>Player</th><th>Pos</th><th>Team</th>
+        <th class="num">Age</th><th class="num accent">Value</th>
+        <th class="num">30d</th><th class="num">Redraft</th><th class="num">Tier</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function renderSellAll(){
+  if(!state.sellReports.length){document.getElementById('sell-all-table').innerHTML='<div class="empty">No sell-high data.</div>';return}
+  const rows=[];
+  for(const r of state.sellReports){
+    for(const s of [...r.strong_sells,...r.consider_sells]){
+      rows.push({franchise:r.franchise_name,...s});
+    }
+  }
+  rows.sort((a,b)=>b.sell_score-a.sell_score);
+  if(!rows.length){document.getElementById('sell-all-table').innerHTML='<div class="empty muted" style="padding:20px;font-size:11px">No strong sell signals league-wide. Check back during the season.</div>';return}
+  const tableRows=rows.slice(0,20).map(s=>`<tr>
+    <td class="name">${s.name}</td>
+    <td><span class="player-pos pos-${s.position}">${s.position}</span></td>
+    <td class="muted">${s.franchise}</td>
+    <td class="num">${s.age?s.age.toFixed(1):'?'}</td>
+    <td class="num accent">${s.fc_value.toLocaleString()}</td>
+    <td class="num">${trendHtml(s.trend_30d)}</td>
+    <td class="num">${s.sell_score.toFixed(0)}</td>
+    <td>${signalBadge(s.sell_signal)}</td>
+    <td class="muted" style="font-size:10px;max-width:200px">${s.reasons[0]||''}</td>
+  </tr>`).join('');
+  document.getElementById('sell-all-table').innerHTML=`
+    <table class="data-table fade-in">
+      <thead><tr>
+        <th>Player</th><th>Pos</th><th>Franchise</th>
+        <th class="num">Age</th><th class="num accent">Value</th>
+        <th class="num">30d</th><th class="num">Score</th><th>Signal</th><th>Reason</th>
+      </tr></thead>
+      <tbody>${tableRows}</tbody>
+    </table>`;
+}
+
+async function loadSellHigh(id){
+  if(!id){document.getElementById('sell-detail').innerHTML='';return}
+  document.getElementById('sell-detail').innerHTML='<div class="loading"><div class="spinner"></div>Loading...</div>';
+  try{
+    const report=await api('/api/sell-high/'+id);
+    const rows=report.signals.map(s=>`<tr>
+      <td class="name">${s.name}</td>
+      <td><span class="player-pos pos-${s.position}">${s.position}</span></td>
+      <td class="muted">${s.nfl_team}</td>
+      <td class="num">${s.age?s.age.toFixed(1):'?'}</td>
+      <td class="num accent">${s.fc_value.toLocaleString()}</td>
+      <td class="num">${trendHtml(s.trend_30d)}</td>
+      <td class="num">${s.sell_score.toFixed(0)}</td>
+      <td>${signalBadge(s.sell_signal)}</td>
+      <td class="muted" style="font-size:10px;max-width:180px">${s.reasons[0]||''}</td>
+    </tr>`).join('');
+    document.getElementById('sell-detail').innerHTML=`
+      <p style="font-size:11px;color:var(--text3);margin-bottom:12px">${report.summary}</p>
+      <table class="data-table fade-in">
+        <thead><tr>
+          <th>Player</th><th>Pos</th><th>Team</th>
+          <th class="num">Age</th><th class="num accent">Value</th>
+          <th class="num">30d</th><th class="num">Score</th><th>Signal</th><th>Reason</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  }catch(e){document.getElementById('sell-detail').innerHTML=`<div class="empty">Error: ${e.message}</div>`}
+}
+
 async function loadWaivers(id){
   if(!id){document.getElementById('waiver-detail').innerHTML='';return}
   document.getElementById('waiver-detail').innerHTML='<div class="loading"><div class="spinner"></div>Loading...</div>';
@@ -355,13 +517,11 @@ async function loadWaivers(id){
     }).join('');
     const hasAdds=report.top_adds.length>0;
     const topAddsHtml=hasAdds
-      ?report.top_adds.map(r=>`<div class="waiver-rec-row"><div class="waiver-rank">#${r.rank}</div><span class="player-pos pos-${r.position}" style="width:32px">${r.position}</span><div class="waiver-name">${r.name}</div><div class="player-team" style="min-width:36px">${r.nfl_team}</div><div class="player-age" style="min-width:50px">age ${r.age||'?'}</div><div class="waiver-reason">${r.reason}</div><div class="waiver-score accent">${r.combined_score.toFixed(0)}</div></div>`).join('')
-      :`<div class="preseason-notice">⏳ No free agents available yet — MFL waiver wire opens closer to the season. Roster needs above are ready for when the wire opens.</div>`;
-    const byPosHtml=Object.entries(report.by_position).map(([pos,recs])=>`<div style="margin-bottom:16px"><div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin-bottom:8px">${pos}</div>${recs.map(r=>`<div class="waiver-rec-row"><div class="waiver-rank">#${r.rank}</div><div class="waiver-name">${r.name}</div><div class="player-team" style="min-width:36px">${r.nfl_team}</div><div class="player-age" style="min-width:50px">age ${r.age||'?'}</div><div class="waiver-reason">${r.reason}</div><div class="waiver-score accent">${r.combined_score.toFixed(0)}</div></div>`).join('')}</div>`).join('');
+      ?report.top_adds.map(r=>`<div class="waiver-rec-row"><div class="waiver-rank">#${r.rank}</div><span class="player-pos pos-${r.position}" style="width:32px">${r.position}</span><div class="waiver-name">${r.name}</div><div class="player-team" style="min-width:36px">${r.nfl_team}</div><div class="player-age" style="min-width:50px">age ${r.age||'?'}</div><div class="waiver-reason">${r.reason}</div><div style="font-size:11px;min-width:40px;text-align:right" class="accent">${r.combined_score.toFixed(0)}</div></div>`).join('')
+      :`<div class="preseason-notice">⏳ No free agents available yet — MFL waiver wire opens closer to the season.</div>`;
     document.getElementById('waiver-detail').innerHTML=`<div class="fade-in">
       <div class="card"><div class="card-title">📌 Roster Needs</div><p style="font-size:11px;color:var(--text3);margin-bottom:12px">${report.summary}</p>${needRows}</div>
       <div class="card"><div class="card-title">⭐ Top Adds</div>${topAddsHtml}</div>
-      ${byPosHtml.trim()?`<div class="card"><div class="card-title">📂 By Position</div>${byPosHtml}</div>`:''}
     </div>`;
   }catch(e){document.getElementById('waiver-detail').innerHTML=`<div class="empty">Error: ${e.message}</div>`}
 }
