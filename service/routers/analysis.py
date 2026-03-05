@@ -155,12 +155,19 @@ class FranchiseSellHighOut(BaseModel):
     summary: str
 
 
-class FCCacheStatusOut(BaseModel):
-    cached: bool
-    age_hours: Optional[float]
-    count: Optional[int]
-    fetched_at: Optional[str]
-    fresh: Optional[bool]
+class FCValueOut(BaseModel):
+    fc_id: int
+    name: str
+    mfl_id: Optional[str]
+    position: str
+    nfl_team: str
+    age: Optional[float]
+    value: int
+    overall_rank: int
+    position_rank: int
+    trend_30d: int
+    redraft_value: int
+    tier: Optional[int]
 
 
 # ---------------------------------------------------------------------------
@@ -175,6 +182,16 @@ def _require_snapshot(request: Request):
             detail="Snapshot not loaded. Call POST /api/snapshot/refresh first.",
         )
     return snapshot
+
+
+def _require_fc_map(request: Request):
+    fc_map = getattr(request.app.state, "fc_value_map", {})
+    if not fc_map:
+        raise HTTPException(
+            status_code=503,
+            detail="FantasyCalc values not loaded. Restart service or check connectivity.",
+        )
+    return fc_map
 
 
 def _position_group_out(group) -> PositionGroupOut:
@@ -326,15 +343,32 @@ def _sell_signal_out(s) -> SellHighSignalOut:
     )
 
 
-def _sell_report_out(report) -> FranchiseSellHighOut:
+def _sell_report_out(r) -> FranchiseSellHighOut:
     return FranchiseSellHighOut(
-        franchise_id=report.franchise_id,
-        franchise_name=report.franchise_name,
-        signals=[_sell_signal_out(s) for s in report.signals],
-        strong_sells=[_sell_signal_out(s) for s in report.strong_sells],
-        consider_sells=[_sell_signal_out(s) for s in report.consider_sells],
-        buy_lows=[_sell_signal_out(s) for s in report.buy_lows],
-        summary=report.summary,
+        franchise_id=r.franchise_id,
+        franchise_name=r.franchise_name,
+        signals=[_sell_signal_out(s) for s in r.signals],
+        strong_sells=[_sell_signal_out(s) for s in r.strong_sells],
+        consider_sells=[_sell_signal_out(s) for s in r.consider_sells],
+        buy_lows=[_sell_signal_out(s) for s in r.buy_lows],
+        summary=r.summary,
+    )
+
+
+def _fc_value_out(p) -> FCValueOut:
+    return FCValueOut(
+        fc_id=p.fc_id,
+        name=p.name,
+        mfl_id=p.mfl_id,
+        position=p.position,
+        nfl_team=p.nfl_team,
+        age=p.age,
+        value=p.value,
+        overall_rank=p.overall_rank,
+        position_rank=p.position_rank,
+        trend_30d=p.trend_30d,
+        redraft_value=p.redraft_value,
+        tier=p.tier,
     )
 
 
@@ -366,13 +400,6 @@ async def _fetch_free_agents(request: Request):
         p for pid, p in snapshot.players.items()
         if pid in fa_ids and not p.is_team_unit
     ]
-
-
-def _get_fc_value_map():
-    """Fetch FantasyCalc values and return mfl_id → FCPlayerValue map."""
-    from mfl_ai_gm.adapters.fantasycalc_client import fetch_fc_values, build_mfl_value_map
-    players = fetch_fc_values()
-    return build_mfl_value_map(players)
 
 
 # ---------------------------------------------------------------------------
@@ -442,60 +469,74 @@ async def get_franchise_waivers(franchise_id: str, request: Request):
     return _waiver_report_out(report)
 
 
-@router.get("/sell-high/all", response_model=list[FranchiseSellHighOut])
+@router.get("/values", response_model=list[FCValueOut])
+async def get_fc_values(request: Request, position: Optional[str] = None):
+    """
+    FantasyCalc dynasty values for all players, sorted by overall rank.
+    Optional ?position=RB|WR|QB|TE filter.
+    """
+    fc_players = getattr(request.app.state, "fc_players", [])
+    if not fc_players:
+        raise HTTPException(status_code=503, detail="FantasyCalc values not loaded.")
+    if position:
+        fc_players = [p for p in fc_players if p.position == position.upper()]
+    return [_fc_value_out(p) for p in fc_players]
+
+
+@router.post("/values/refresh", response_model=dict)
+async def refresh_fc_values(request: Request):
+    """Force refresh FantasyCalc values from API (bypasses 24h cache)."""
+    from mfl_ai_gm.adapters.fantasycalc_client import fetch_fc_values, build_mfl_value_map
+    try:
+        fc_players = fetch_fc_values(force_refresh=True)
+        request.app.state.fc_players = fc_players
+        request.app.state.fc_value_map = build_mfl_value_map(fc_players)
+        return {"status": "ok", "count": len(fc_players)}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"FantasyCalc refresh failed: {e}")
+
+
+@router.get("/sell-high", response_model=list[FranchiseSellHighOut])
 async def get_all_sell_high(request: Request):
     """
-    Sell-high analysis for all franchises using FantasyCalc dynasty values.
-    Returns list sorted by franchise name.
+    Sell-high signals for all franchises.
+    Returns list sorted by franchise with strongest sell signals first.
     """
     snapshot = _require_snapshot(request)
-    value_map = _get_fc_value_map()
+    fc_map = _require_fc_map(request)
     from mfl_ai_gm.analysis.sell_high import build_all_sell_reports
-    reports = build_all_sell_reports(snapshot, value_map)
+    reports = build_all_sell_reports(snapshot, fc_map)
+    reports.sort(key=lambda r: len(r.strong_sells) * 100 + len(r.consider_sells), reverse=True)
     return [_sell_report_out(r) for r in reports]
 
 
 @router.get("/sell-high/{franchise_id}", response_model=FranchiseSellHighOut)
 async def get_franchise_sell_high(franchise_id: str, request: Request):
     """
-    Sell-high analysis for a single franchise.
-    Players ranked by sell score — Strong Sell → Consider Selling → Hold → Buy Low.
+    Sell-high signals for a single franchise.
+    Each player scored 0-100: Strong Sell / Consider Selling / Hold / Buy Low.
     """
     snapshot = _require_snapshot(request)
+    fc_map = _require_fc_map(request)
     fmap = snapshot.franchise_map
     if franchise_id not in fmap:
         raise HTTPException(
             status_code=404,
             detail=f"Franchise '{franchise_id}' not found. Valid IDs: {list(fmap.keys())}",
         )
-
     franchise = fmap[franchise_id]
-    value_map = _get_fc_value_map()
-    player_names = {pid: p.name for pid, p in snapshot.players.items()}
     roster = snapshot.rosters.get(franchise_id)
-    roster_ids = list(roster.all_ids) if roster else []
+    if not roster:
+        raise HTTPException(status_code=404, detail="No roster found for franchise.")
+
+    player_names = {pid: p.name for pid, p in snapshot.players.items()}
 
     from mfl_ai_gm.analysis.sell_high import build_franchise_sell_report
     report = build_franchise_sell_report(
         franchise_id=franchise_id,
         franchise_name=franchise.name,
-        roster_player_ids=roster_ids,
-        mfl_value_map=value_map,
+        roster_player_ids=roster.all_ids,
+        mfl_value_map=fc_map,
         snapshot_player_names=player_names,
     )
     return _sell_report_out(report)
-
-
-@router.get("/fc-cache/status", response_model=FCCacheStatusOut)
-async def get_fc_cache_status():
-    """Status of the FantasyCalc value cache."""
-    from mfl_ai_gm.adapters.fantasycalc_client import get_cache_metadata
-    return get_cache_metadata()
-
-
-@router.post("/fc-cache/refresh", response_model=FCCacheStatusOut)
-async def refresh_fc_cache():
-    """Force-refresh the FantasyCalc value cache from the API."""
-    from mfl_ai_gm.adapters.fantasycalc_client import fetch_fc_values, get_cache_metadata
-    fetch_fc_values(force_refresh=True)
-    return get_cache_metadata()
