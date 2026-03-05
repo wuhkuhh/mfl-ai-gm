@@ -89,7 +89,7 @@ async def health():
     return {
         "status": "ok",
         "service": "mfl-ai-gm",
-        "port": 8001,
+        "port": 8002,
         "snapshot_loaded": snapshot is not None,
         "league": snapshot.league_name if snapshot else None,
         "season": snapshot.season if snapshot else None,
