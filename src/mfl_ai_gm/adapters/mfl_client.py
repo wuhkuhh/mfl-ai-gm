@@ -73,7 +73,7 @@ class MFLClient:
             return self._resolved_host
 
         probe_url = f"{self.base_url}/{self.season}/export"
-        params = {"TYPE": "league", "L": self.league_id, "JSON": "1", "APIKEY": self.api_key}
+        params = {"TYPE": "league", "L": self.league_id, "JSON": "1"}
 
         try:
             # Do NOT follow redirects — we want the Location header
@@ -106,6 +106,30 @@ class MFLClient:
             "JSON": "1",
             "APIKEY": self.api_key,
         }
+
+    def _get_public(self, export_type: str, extra: dict[str, str] | None = None) -> dict[str, Any]:
+        """Same as _get() but without APIKEY — for endpoints that reject auth."""
+        params = {"L": self.league_id, "JSON": "1", "TYPE": export_type}
+        if extra:
+            params.update(extra)
+        try:
+            response = httpx.get(
+                self._export_url(), params=params, follow_redirects=True, timeout=self.timeout
+            )
+        except httpx.RequestError as exc:
+            raise MFLClientError(f"Network error calling MFL API: {exc}") from exc
+        if response.status_code != 200:
+            raise MFLClientError(f"MFL API returned HTTP {response.status_code} for TYPE={export_type}")
+        if not response.text.strip():
+            raise MFLClientError(f"MFL API returned empty body for TYPE={export_type}")
+        try:
+            data = response.json()
+        except Exception as exc:
+            raise MFLClientError(f"MFL API returned non-JSON for TYPE={export_type}: {response.text[:200]}") from exc
+        if "error" in data:
+            msg = data["error"].get("$t", "Unknown MFL error")
+            raise MFLClientError(f"MFL API error for TYPE={export_type}: {msg}")
+        return data
 
     def _get(self, export_type: str, extra: dict[str, str] | None = None) -> dict[str, Any]:
         params = self._base_params()
@@ -158,12 +182,15 @@ class MFLClient:
         """
         TYPE=league — league settings, metadata, and all franchise info.
 
+        Note: MFL rejects APIKEY on this endpoint — must be called unauthenticated.
+        The league endpoint is public and does not require auth.
+
         Response shape:
             data["league"]                                    → league settings dict
             data["league"]["franchises"]["franchise"]         → list of franchise dicts
             franchise keys: id, name, abbrev, owner_name, future_draft_picks, ...
         """
-        return self._get("league")
+        return self._get_public("league")
 
     def get_franchises(self) -> list[dict[str, Any]]:
         """
