@@ -86,17 +86,14 @@ class ConsensusPlayerOut(BaseModel):
     fc_rank: Optional[int]; fc_trend_30d: Optional[int]
     dp_ecr_1qb: Optional[float]; dp_scrape_date: Optional[str]
 
-class PickValueOut(BaseModel):
-    label: str; pick_round: Optional[int]; pick_slot: Optional[int]
-    pick_year: Optional[int]; normalized_value: float
+class PickOut(BaseModel):
+    label: str; mfl_id: str; consensus_score: float
+    fc_value: Optional[int]; fc_norm: Optional[float]
 
 class TradeAssetIn(BaseModel):
     asset_type: str           # "player" or "pick"
     label: str
-    mfl_id: Optional[str] = None
-    pick_year: Optional[int] = None
-    pick_round: Optional[int] = None
-    pick_slot: Optional[int] = None
+    mfl_id: Optional[str] = None   # required for players; optional for picks (resolved by label)
 
 class TradeRequestIn(BaseModel):
     side_a: list[TradeAssetIn]
@@ -104,7 +101,6 @@ class TradeRequestIn(BaseModel):
 
 class TradeAssetOut(BaseModel):
     asset_type: str; label: str; mfl_id: Optional[str]
-    pick_year: Optional[int]; pick_round: Optional[int]; pick_slot: Optional[int]
     consensus_score: float; fc_score: Optional[float]; dp_score: Optional[float]
     sources: int; position: Optional[str]; nfl_team: Optional[str]
     age: Optional[float]; notes: str; is_disputed: bool
@@ -233,9 +229,7 @@ def _consensus_out(p) -> ConsensusPlayerOut:
         dp_scrape_date=p.dp_scrape_date)
 
 def _trade_asset_out(a) -> TradeAssetOut:
-    from mfl_ai_gm.analysis.trade_calculator import TradeAsset
     return TradeAssetOut(asset_type=a.asset_type, label=a.label, mfl_id=a.mfl_id,
-        pick_year=a.pick_year, pick_round=a.pick_round, pick_slot=a.pick_slot,
         consensus_score=a.consensus_score, fc_score=a.fc_score, dp_score=a.dp_score,
         sources=a.sources, position=a.position, nfl_team=a.nfl_team, age=a.age,
         notes=a.notes, is_disputed=a.is_disputed)
@@ -354,16 +348,17 @@ async def get_franchise_sell_high(franchise_id: str, request: Request):
 
 
 # ---------------------------------------------------------------------------
-# Endpoints — new: consensus + trade calculator
+# Endpoints — consensus + trade calculator
 # ---------------------------------------------------------------------------
 
 @router.get("/consensus", response_model=list[ConsensusPlayerOut])
 async def get_consensus_values(request: Request, position: Optional[str] = None,
                                 limit: int = 200):
-    """Consensus dynasty rankings combining FantasyCalc + DynastyProcess."""
     players = getattr(request.app.state, "consensus_players", [])
     if not players:
         raise HTTPException(503, "Consensus values not loaded.")
+    # Exclude picks from general consensus list
+    players = [p for p in players if not (p.mfl_id.startswith("DP_") or p.mfl_id.startswith("FP_"))]
     if position:
         players = [p for p in players if p.position == position.upper()]
     return [_consensus_out(p) for p in players[:limit]]
@@ -375,46 +370,56 @@ async def search_consensus(request: Request, q: str = "", limit: int = 20):
     if not players:
         raise HTTPException(503, "Consensus values not loaded.")
     q_lower = q.lower()
-    results = [p for p in players if q_lower in p.name.lower()]
+    # Exclude picks from search results
+    results = [p for p in players
+               if q_lower in p.name.lower()
+               and not (p.mfl_id.startswith("DP_") or p.mfl_id.startswith("FP_"))]
     return [_consensus_out(p) for p in results[:limit]]
 
-@router.get("/picks", response_model=list[PickValueOut])
+@router.get("/picks", response_model=list[PickOut])
 async def get_pick_values(request: Request):
-    """All draft pick slot values from DynastyProcess."""
-    pick_table = getattr(request.app.state, "pick_table", {})
-    dp_picks = getattr(request.app.state, "dp_picks", [])
+    """All draft pick values using FC consensus scoring."""
+    from mfl_ai_gm.analysis.trade_calculator import get_all_picks
+    cmap = getattr(request.app.state, "consensus_map", {})
     result = []
-    for p in dp_picks:
-        if p.pick_round and p.pick_slot:
-            val = pick_table.get((p.pick_round, p.pick_slot), 0.0)
-            result.append(PickValueOut(label=p.label, pick_round=p.pick_round,
-                pick_slot=p.pick_slot, pick_year=p.pick_year, normalized_value=val))
+    for pick in get_all_picks():
+        mfl_id = pick["mfl_id"]
+        agg = cmap.get(mfl_id)
+        result.append(PickOut(
+            label=pick["label"],
+            mfl_id=mfl_id,
+            consensus_score=agg.consensus_score if agg else 0.0,
+            fc_value=agg.fc_value if agg else None,
+            fc_norm=agg.fc_norm if agg else None,
+        ))
     return result
 
 @router.post("/trade/evaluate", response_model=TradeVerdictOut)
 async def evaluate_trade_endpoint(trade: TradeRequestIn, request: Request):
     """
-    Evaluate a dynasty trade.
-    Pass players by mfl_id, picks by round/slot/year.
-    Returns full scoring breakdown and verdict.
+    Evaluate a dynasty trade — unlimited players and picks on each side.
+    Players: pass mfl_id.
+    Picks: pass mfl_id (e.g. 'DP_0_4' for 2026 1.05) OR label (resolved automatically).
     """
-    consensus_map = _require_consensus_map(request)
-    pick_table = getattr(request.app.state, "pick_table", {})
+    from mfl_ai_gm.analysis.trade_calculator import TradeAsset, evaluate_trade, resolve_pick_mfl_id
 
-    from mfl_ai_gm.analysis.trade_calculator import TradeAsset, evaluate_trade
+    consensus_map = _require_consensus_map(request)
 
     def _build_assets(items: list[TradeAssetIn]) -> list[TradeAsset]:
         assets = []
         for item in items:
-            a = TradeAsset(
+            mfl_id = item.mfl_id
+            # For picks without mfl_id, resolve from label
+            if item.asset_type == "pick" and not mfl_id:
+                mfl_id = resolve_pick_mfl_id(item.label)
+                if not mfl_id:
+                    raise HTTPException(400, f"Unknown pick label: '{item.label}'. "
+                        "Use format '2026 Pick 1.05' or pass mfl_id directly.")
+            assets.append(TradeAsset(
                 asset_type=item.asset_type,
                 label=item.label,
-                mfl_id=item.mfl_id,
-                pick_year=item.pick_year,
-                pick_round=item.pick_round,
-                pick_slot=item.pick_slot,
-            )
-            assets.append(a)
+                mfl_id=mfl_id,
+            ))
         return assets
 
     side_a = _build_assets(trade.side_a)
@@ -423,7 +428,7 @@ async def evaluate_trade_endpoint(trade: TradeRequestIn, request: Request):
     if not side_a and not side_b:
         raise HTTPException(400, "Both sides of the trade are empty.")
 
-    verdict = evaluate_trade(side_a, side_b, consensus_map, pick_table)
+    verdict = evaluate_trade(side_a, side_b, consensus_map)
     return _verdict_out(verdict)
 
 @router.post("/values/refresh-all", response_model=dict)
@@ -432,7 +437,6 @@ async def refresh_all_values(request: Request):
     from mfl_ai_gm.adapters.fantasycalc_client import fetch_fc_values, build_mfl_value_map as fc_mfl_map
     from mfl_ai_gm.adapters.dynastyprocess_client import fetch_dp_values, build_dp_mfl_map, fetch_dp_picks
     from mfl_ai_gm.analysis.value_aggregator import build_consensus_values, build_consensus_mfl_map
-    from mfl_ai_gm.analysis.trade_calculator import build_pick_value_table
     try:
         fc_players = fetch_fc_values(force_refresh=True)
         dp_players = fetch_dp_values(force_refresh=True)
@@ -447,8 +451,7 @@ async def refresh_all_values(request: Request):
         request.app.state.dp_picks = dp_picks
         request.app.state.consensus_players = consensus
         request.app.state.consensus_map = build_consensus_mfl_map(consensus)
-        request.app.state.pick_table = build_pick_value_table(dp_picks)
         return {"status": "ok", "fc": len(fc_players), "dp": len(dp_players),
-                "consensus": len(consensus), "picks": len(dp_picks)}
+                "consensus": len(consensus)}
     except Exception as e:
         raise HTTPException(502, f"Value refresh failed: {e}")
