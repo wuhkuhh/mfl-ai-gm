@@ -2,9 +2,11 @@
 Layer 2 — Analysis
 Dynasty trade calculator — unlimited players + draft picks, consensus value scoring.
 
-Pick slot format: round=1, slot=5 → "2026 1.05"
-Player values: consensus aggregator (FC + DP normalized 0-100)
-Pick values: DP values-picks.csv (ecr_1qb inverted + year penalty)
+Both players AND picks are scored via the consensus map (FC MFL IDs for picks).
+Pick MFL IDs follow FC conventions: DP_round_slot (e.g. DP_0_4 = 2026 1.05)
+and FP_year_round (e.g. FP_2027_1 = 2027 1st round).
+
+No separate pick table needed — FC already values picks on the same scale as players.
 """
 
 from __future__ import annotations
@@ -18,32 +20,78 @@ logger = logging.getLogger(__name__)
 FAIR_DELTA = 8.0
 SLIGHT_DELTA = 18.0
 SIGNIFICANT_DELTA = 35.0
-MIN_PLAYER_SCORE = 1.0
 
-# Baseline pick values (round, slot) → 0-100 normalized
-# Used if DP picks not available
-BASELINE_PICK_VALUES: dict[tuple[int, int], float] = {
-    (1,1):72.0,(1,2):68.0,(1,3):64.0,(1,4):60.5,(1,5):57.0,(1,6):53.5,(1,7):50.0,
-    (1,8):47.0,(1,9):44.0,(1,10):41.5,(1,11):39.0,(1,12):37.0,(1,13):35.0,(1,14):33.0,
-    (2,1):30.0,(2,2):28.5,(2,3):27.0,(2,4):25.5,(2,5):24.0,(2,6):22.5,(2,7):21.5,
-    (2,8):20.5,(2,9):19.5,(2,10):18.5,(2,11):17.5,(2,12):16.5,(2,13):15.5,(2,14):14.5,
-    (3,1):13.0,(3,2):12.0,(3,3):11.0,(3,4):10.5,(3,5):10.0,(3,6):9.5,(3,7):9.0,
-    (3,8):8.5,(3,9):8.0,(3,10):7.5,(3,11):7.0,(3,12):6.5,(3,13):6.0,(3,14):5.5,
-    (4,1):5.0,(4,2):4.5,(4,3):4.0,(4,4):3.5,(4,5):3.0,(4,6):2.5,(4,7):2.0,
-    (4,8):1.8,(4,9):1.6,(4,10):1.4,(4,11):1.2,(4,12):1.0,(4,13):0.8,(4,14):0.6,
+# Full pick label → FC mfl_id mapping
+# Source: FantasyCalc API, position="PI" players
+PICK_LABEL_TO_MFL_ID: dict[str, str] = {
+    "2026 Pick 1.01": "DP_0_0",
+    "2026 Pick 1.02": "DP_0_1",
+    "2026 Pick 1.03": "DP_0_2",
+    "2026 Pick 1.04": "DP_0_3",
+    "2026 Pick 1.05": "DP_0_4",
+    "2026 Pick 1.06": "DP_0_5",
+    "2026 Pick 1.07": "DP_0_6",
+    "2026 Pick 1.08": "DP_0_7",
+    "2026 Pick 1.09": "DP_0_8",
+    "2026 Pick 1.10": "DP_0_9",
+    "2026 Pick 1.11": "DP_0_10",
+    "2026 Pick 1.12": "DP_0_11",
+    "2026 Pick 2.01": "DP_1_0",
+    "2026 Pick 2.02": "DP_1_1",
+    "2026 Pick 2.03": "DP_1_2",
+    "2026 Pick 2.04": "DP_1_3",
+    "2026 Pick 2.05": "DP_1_4",
+    "2026 Pick 2.06": "DP_1_5",
+    "2026 Pick 2.07": "DP_1_6",
+    "2026 Pick 2.08": "DP_1_7",
+    "2026 Pick 2.09": "DP_1_8",
+    "2026 Pick 2.10": "DP_1_9",
+    "2026 Pick 2.11": "DP_1_10",
+    "2026 Pick 2.12": "DP_1_11",
+    "2026 Pick 3.01": "DP_2_0",
+    "2026 Pick 3.02": "DP_2_1",
+    "2026 Pick 3.03": "DP_2_2",
+    "2026 Pick 3.04": "DP_2_3",
+    "2026 Pick 3.05": "DP_2_4",
+    "2026 Pick 3.06": "DP_2_5",
+    "2026 Pick 3.07": "DP_2_6",
+    "2026 Pick 3.08": "DP_2_7",
+    "2026 Pick 3.09": "DP_2_8",
+    "2026 Pick 3.10": "DP_2_9",
+    "2026 Pick 3.11": "DP_2_10",
+    "2026 Pick 3.12": "DP_2_11",
+    "2026 Pick 4.01": "DP_3_0",
+    "2026 Pick 4.02": "DP_3_1",
+    "2026 Pick 4.03": "DP_3_2",
+    "2026 Pick 4.04": "DP_3_3",
+    "2026 Pick 4.05": "DP_3_4",
+    "2026 Pick 4.06": "DP_3_5",
+    "2026 Pick 4.07": "DP_3_6",
+    "2026 Pick 4.08": "DP_3_7",
+    "2026 Pick 4.09": "DP_3_8",
+    "2026 Pick 4.10": "DP_3_9",
+    "2026 Pick 4.11": "DP_3_10",
+    "2026 Pick 4.12": "DP_3_11",
+    "2026 1st": "FP_2026_1",
+    "2026 2nd": "FP_2026_2",
+    "2026 3rd": "FP_2026_3",
+    "2027 1st": "FP_2027_1",
+    "2027 2nd": "FP_2027_2",
+    "2027 3rd": "FP_2027_3",
+    "2028 1st": "FP_2028_1",
+    "2028 2nd": "FP_2028_2",
+    "2028 3rd": "FP_2028_3",
 }
 
-YEAR_PENALTY: dict[int, float] = {0:1.00, 1:0.85, 2:0.72, 3:0.60}
+# Reverse map for lookup by mfl_id
+MFL_ID_TO_PICK_LABEL: dict[str, str] = {v: k for k, v in PICK_LABEL_TO_MFL_ID.items()}
 
 
 @dataclass
 class TradeAsset:
     asset_type: str          # "player" or "pick"
-    label: str
+    label: str               # Display name
     mfl_id: Optional[str] = None
-    pick_year: Optional[int] = None
-    pick_round: Optional[int] = None
-    pick_slot: Optional[int] = None   # None = mid-round
     consensus_score: float = 0.0
     fc_score: Optional[float] = None
     dp_score: Optional[float] = None
@@ -76,62 +124,52 @@ class TradeVerdict:
     disputed_assets: list[str] = field(default_factory=list)
 
 
-def build_pick_value_table(dp_picks: list = None) -> dict[tuple[int, int], float]:
-    """Build (round, slot) → normalized 0-100 value from DP picks data."""
-    if not dp_picks:
-        logger.info("Using baseline pick value table")
-        return dict(BASELINE_PICK_VALUES)
-
-    valid = [(p.pick_round, p.pick_slot, p.ecr_1qb) for p in dp_picks
-             if p.ecr_1qb is not None and p.pick_round and p.pick_slot]
-    if not valid:
-        return dict(BASELINE_PICK_VALUES)
-
-    # ecr_1qb is an ECR rank (lower number = better pick = higher value)
-    # Invert: best pick (lowest ecr) → highest value
-    ecr_values = [v[2] for v in valid]
-    ecr_min, ecr_max = min(ecr_values), max(ecr_values)
-    span = (ecr_max - ecr_min) or 1.0
-
-    table = {}
-    for rnd, slot, ecr in valid:
-        # Invert and scale to 0-80 (leave headroom for year penalties)
-        norm = max(0.0, min(80.0, (ecr_max - ecr) / span * 80.0))
-        table[(rnd, slot)] = round(norm, 1)
-
-    logger.info("DP pick table: %d slots", len(table))
-    return table
+def resolve_pick_mfl_id(label: str) -> Optional[str]:
+    """Resolve a pick label to its FC mfl_id. Returns None if not found."""
+    return PICK_LABEL_TO_MFL_ID.get(label)
 
 
-def _score_pick(asset: TradeAsset, pick_table: dict, current_year: int) -> float:
-    rnd = asset.pick_round or 1
-    slot = asset.pick_slot
-    year = asset.pick_year or current_year
-    year_offset = max(0, min(3, year - current_year))
+def get_all_picks() -> list[dict]:
+    """Return all known picks as label/mfl_id pairs, ordered by value (best first)."""
+    # Ordered by approximate value: specific slots first (best to worst), then future rounds
+    ordered = [
+        "2026 Pick 1.01", "2026 Pick 1.02", "2026 Pick 1.03", "2026 Pick 1.04",
+        "2026 Pick 1.05", "2026 Pick 1.06", "2026 Pick 1.07", "2026 Pick 1.08",
+        "2026 Pick 1.09", "2026 Pick 1.10", "2026 Pick 1.11", "2026 Pick 1.12",
+        "2027 1st", "2026 1st",
+        "2026 Pick 2.01", "2026 Pick 2.02", "2026 Pick 2.03", "2026 Pick 2.04",
+        "2026 Pick 2.05", "2026 Pick 2.06", "2026 Pick 2.07", "2026 Pick 2.08",
+        "2026 Pick 2.09", "2026 Pick 2.10", "2026 Pick 2.11", "2026 Pick 2.12",
+        "2027 2nd", "2028 1st", "2026 2nd",
+        "2026 Pick 3.01", "2026 Pick 3.02", "2026 Pick 3.03", "2026 Pick 3.04",
+        "2026 Pick 3.05", "2026 Pick 3.06", "2026 Pick 3.07", "2026 Pick 3.08",
+        "2026 Pick 3.09", "2026 Pick 3.10", "2026 Pick 3.11", "2026 Pick 3.12",
+        "2027 3rd", "2028 2nd", "2026 3rd",
+        "2026 Pick 4.01", "2026 Pick 4.02", "2026 Pick 4.03", "2026 Pick 4.04",
+        "2026 Pick 4.05", "2026 Pick 4.06", "2026 Pick 4.07", "2026 Pick 4.08",
+        "2026 Pick 4.09", "2026 Pick 4.10", "2026 Pick 4.11", "2026 Pick 4.12",
+        "2028 3rd",
+    ]
+    return [{"label": lbl, "mfl_id": PICK_LABEL_TO_MFL_ID[lbl]}
+            for lbl in ordered if lbl in PICK_LABEL_TO_MFL_ID]
 
-    if slot is not None:
-        base = pick_table.get((rnd, slot), BASELINE_PICK_VALUES.get((rnd, slot), 5.0))
-    else:
-        # Mid-round estimate
-        mid = max(1, min(14, 7))
-        base = pick_table.get((rnd, mid), BASELINE_PICK_VALUES.get((rnd, mid), 5.0))
-        asset.notes = "mid-round estimate"
 
-    penalty = YEAR_PENALTY.get(year_offset, 0.55)
-    value = round(base * penalty, 2)
-    if not asset.notes:
-        asset.notes = f"+{year_offset}yr ×{penalty}" if year_offset > 0 else "current year"
-    return value
-
-
-def _score_player(asset: TradeAsset, consensus_map: dict) -> tuple[float, Optional[float], Optional[float], int, list[str]]:
+def _score_asset(asset: TradeAsset, consensus_map: dict) -> list[str]:
+    """Score any asset (player or pick) via consensus map. Returns disputed flags."""
     disputed = []
     if not asset.mfl_id:
-        return 0.0, None, None, 0, [f"{asset.label}: no MFL ID"]
+        asset.notes = "no MFL ID — unscored"
+        return [f"{asset.label}: no MFL ID"]
+
     agg = consensus_map.get(asset.mfl_id)
     if not agg:
-        return 0.0, None, None, 0, [f"{asset.label}: not in consensus map"]
+        asset.notes = "not in value map"
+        return [f"{asset.label}: not in consensus map"]
 
+    asset.consensus_score = agg.consensus_score
+    asset.fc_score = agg.fc_norm
+    asset.dp_score = agg.dp_norm
+    asset.sources = agg.sources
     asset.position = asset.position or agg.position
     asset.nfl_team = asset.nfl_team or agg.nfl_team
     asset.age = asset.age or agg.age
@@ -142,35 +180,37 @@ def _score_player(asset: TradeAsset, consensus_map: dict) -> tuple[float, Option
             f"{asset.label}: FC={agg.fc_norm:.0f} vs DP={agg.dp_norm:.0f} "
             f"(Δ{agg.disagreement:.0f}) — {agg.value_signal}"
         )
-    return agg.consensus_score, agg.fc_norm, agg.dp_norm, agg.sources, disputed
+    return disputed
 
 
 def evaluate_trade(
     side_a_assets: list[TradeAsset],
     side_b_assets: list[TradeAsset],
     consensus_map: dict,
-    pick_table: dict[tuple[int, int], float],
-    current_year: int = 2026,
 ) -> TradeVerdict:
+    """
+    Evaluate a dynasty trade. Both players and picks scored via consensus map.
+
+    Args:
+        side_a_assets: Assets Team A receives
+        side_b_assets: Assets Team B receives
+        consensus_map: mfl_id → AggregatedPlayerValue (includes picks)
+
+    Returns:
+        TradeVerdict with full scoring breakdown
+    """
     disputed_flags: list[str] = []
 
     def _score_side(assets: list[TradeAsset]) -> TradeSide:
         side = TradeSide(assets=assets)
         for asset in assets:
-            if asset.asset_type == "player":
-                score, fc, dp, srcs, flags = _score_player(asset, consensus_map)
-                asset.consensus_score = score
-                asset.fc_score = fc
-                asset.dp_score = dp
-                asset.sources = srcs
-                disputed_flags.extend(flags)
-                side.player_count += 1
-            else:
-                score = _score_pick(asset, pick_table, current_year)
-                asset.consensus_score = score
-                asset.sources = 1
-                side.pick_count += 1
+            flags = _score_asset(asset, consensus_map)
+            disputed_flags.extend(flags)
             side.total_score += asset.consensus_score
+            if asset.asset_type == "pick":
+                side.pick_count += 1
+            else:
+                side.player_count += 1
         side.total_score = round(side.total_score, 2)
         return side
 
@@ -224,36 +264,42 @@ if __name__ == "__main__":
     import logging
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     from mfl_ai_gm.adapters.fantasycalc_client import fetch_fc_values, build_mfl_value_map
-    from mfl_ai_gm.adapters.dynastyprocess_client import fetch_dp_values, build_dp_mfl_map, fetch_dp_picks
+    from mfl_ai_gm.adapters.dynastyprocess_client import fetch_dp_values, build_dp_mfl_map
     from mfl_ai_gm.analysis.value_aggregator import build_consensus_values, build_consensus_mfl_map
 
     fc_map = build_mfl_value_map(fetch_fc_values())
     dp_map = build_dp_mfl_map(fetch_dp_values())
     cmap = build_consensus_mfl_map(build_consensus_values(fc_map, dp_map))
-    pick_table = build_pick_value_table(fetch_dp_picks())
 
-    # Bijan Robinson FOR James Cook + 2026 1.05
+    # Test 1: Bijan Robinson FOR James Cook + 2026 1.05
     side_a = [TradeAsset(asset_type="player", label="Bijan Robinson", mfl_id="16161")]
     side_b = [
         TradeAsset(asset_type="player", label="James Cook", mfl_id="15715"),
-        TradeAsset(asset_type="pick", label="2026 1.05", pick_year=2026, pick_round=1, pick_slot=5),
+        TradeAsset(asset_type="pick", label="2026 Pick 1.05",
+                   mfl_id=resolve_pick_mfl_id("2026 Pick 1.05")),
     ]
-    v = evaluate_trade(side_a, side_b, cmap, pick_table)
-
-    print(f"\n{'='*55}")
-    print(f"  TRADE CALCULATOR")
-    print(f"{'='*55}")
+    v = evaluate_trade(side_a, side_b, cmap)
+    print(f"\n{'='*55}\nTest 1: Bijan vs Cook + 1.05\n{'='*55}")
     print(f"\nSide A — {v.side_a.total_score:.1f} pts:")
     for a in v.side_a.assets:
-        print(f"  {a.label:<30} {a.consensus_score:.1f}  {a.notes or ''}")
+        print(f"  {a.label:<32} {a.consensus_score:.1f}")
     print(f"\nSide B — {v.side_b.total_score:.1f} pts:")
     for a in v.side_b.assets:
-        print(f"  {a.label:<30} {a.consensus_score:.1f}  {a.notes or ''}")
+        print(f"  {a.label:<32} {a.consensus_score:.1f}  {a.notes or ''}")
     print(f"\nVerdict: {v.fairness} — {v.winner}")
     print(f"Delta:   {v.delta:+.1f} pts  ({v.advantage_pct:.1f}%)")
     print(f"\n{v.summary}")
     print(f"→ {v.recommendation}")
-    if v.disputed_assets:
-        print("\nDisputed:")
-        for d in v.disputed_assets:
-            print(f"  ⚠ {d}")
+
+    # Test 2: 2-for-1 — JSN + 2027 1st FOR Bijan
+    side_a2 = [
+        TradeAsset(asset_type="player", label="Jaxon Smith-Njigba", mfl_id="16804"),
+        TradeAsset(asset_type="pick", label="2027 1st",
+                   mfl_id=resolve_pick_mfl_id("2027 1st")),
+    ]
+    side_b2 = [TradeAsset(asset_type="player", label="Bijan Robinson", mfl_id="16161")]
+    v2 = evaluate_trade(side_a2, side_b2, cmap)
+    print(f"\n{'='*55}\nTest 2: JSN + 2027 1st vs Bijan\n{'='*55}")
+    print(f"Side A: {v2.side_a.total_score:.1f}  Side B: {v2.side_b.total_score:.1f}")
+    print(f"Verdict: {v2.fairness} — {v2.winner}  (Δ{v2.delta:+.1f})")
+    print(f"→ {v2.recommendation}")
