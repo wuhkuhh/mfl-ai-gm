@@ -346,7 +346,6 @@ select.input { cursor: pointer; }
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: 8px;
-  overflow: hidden;
 }
 .trade-side-header {
   padding: 12px 16px;
@@ -362,7 +361,7 @@ select.input { cursor: pointer; }
   font-weight: 800; font-size: 22px;
   color: var(--accent2);
 }
-.trade-assets { padding: 8px; min-height: 80px; }
+.trade-assets { padding: 8px; min-height: 80px; overflow: visible; }
 .trade-asset {
   display: flex; align-items: center; gap: 8px;
   padding: 8px 10px;
@@ -385,6 +384,8 @@ select.input { cursor: pointer; }
   padding: 8px;
   border-top: 1px solid var(--border);
   display: flex; gap: 6px;
+  position: relative;
+  overflow: visible;
 }
 .trade-vs {
   display: flex; flex-direction: column;
