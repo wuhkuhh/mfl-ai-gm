@@ -4,12 +4,8 @@ DynastyProcess client — fetches open dynasty trade values and player ID crossw
 
 Sources (GitHub raw, no auth required):
   values-players.csv  — dynasty trade values (value_1qb), ECR (ecr_1qb), updated weekly
+  values-picks.csv    — pick slot values by round/slot, ECR-based
   db_playerids.csv    — full ID crosswalk: mfl_id ↔ fantasypros_id ↔ sleeper_id ↔ etc.
-
-Strategy:
-  1. Fetch db_playerids.csv → build fp_id → mfl_id lookup
-  2. Fetch values-players.csv → join on fp_id → tag each row with mfl_id
-  3. Cache both to disk (24h TTL)
 """
 
 from __future__ import annotations
@@ -18,6 +14,7 @@ import csv
 import io
 import json
 import logging
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,37 +24,21 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
-DP_VALUES_URL = (
-    "https://raw.githubusercontent.com/dynastyprocess/data/master/files/values-players.csv"
-)
-DP_PLAYERIDS_URL = (
-    "https://raw.githubusercontent.com/dynastyprocess/data/master/files/db_playerids.csv"
-)
+DP_VALUES_URL = "https://raw.githubusercontent.com/dynastyprocess/data/master/files/values-players.csv"
+DP_PLAYERIDS_URL = "https://raw.githubusercontent.com/dynastyprocess/data/master/files/db_playerids.csv"
+DP_PICKS_URL = "https://raw.githubusercontent.com/dynastyprocess/data/master/files/values-picks.csv"
 
 DEFAULT_VALUES_CACHE = Path("data/dp_values.json")
 DEFAULT_IDS_CACHE = Path("data/dp_playerids.json")
+DEFAULT_PICKS_CACHE = Path("data/dp_picks.json")
 
-CACHE_TTL_SECONDS = 86_400  # 24 hours
+CACHE_TTL_SECONDS = 86_400
 REQUEST_TIMEOUT = 15
 
 
-# ---------------------------------------------------------------------------
-# Data class
-# ---------------------------------------------------------------------------
-
 class DPPlayerValue:
-    """Dynasty trade value for a single player from DynastyProcess."""
-
-    __slots__ = (
-        "name", "position", "nfl_team", "age", "draft_year",
-        "ecr_1qb", "ecr_2qb", "ecr_pos",
-        "value_1qb", "value_2qb",
-        "scrape_date", "fp_id", "mfl_id",
-    )
+    __slots__ = ("name","position","nfl_team","age","draft_year","ecr_1qb","ecr_2qb",
+                 "ecr_pos","value_1qb","value_2qb","scrape_date","fp_id","mfl_id")
 
     def __init__(self, row: dict, mfl_id: Optional[str] = None):
         self.name: str = row.get("player", "")
@@ -93,32 +74,40 @@ class DPPlayerValue:
         return obj
 
     def to_dict(self) -> dict:
-        return {
-            "name": self.name,
-            "position": self.position,
-            "nfl_team": self.nfl_team,
-            "age": self.age,
-            "draft_year": self.draft_year,
-            "ecr_1qb": self.ecr_1qb,
-            "ecr_2qb": self.ecr_2qb,
-            "ecr_pos": self.ecr_pos,
-            "value_1qb": self.value_1qb,
-            "value_2qb": self.value_2qb,
-            "scrape_date": self.scrape_date,
-            "fp_id": self.fp_id,
-            "mfl_id": self.mfl_id,
-        }
-
-    def __repr__(self):
-        return (
-            f"DPPlayerValue({self.name!r}, pos={self.position}, "
-            f"value_1qb={self.value_1qb}, ecr={self.ecr_1qb}, mfl_id={self.mfl_id!r})"
-        )
+        return {"name": self.name, "position": self.position, "nfl_team": self.nfl_team,
+                "age": self.age, "draft_year": self.draft_year, "ecr_1qb": self.ecr_1qb,
+                "ecr_2qb": self.ecr_2qb, "ecr_pos": self.ecr_pos, "value_1qb": self.value_1qb,
+                "value_2qb": self.value_2qb, "scrape_date": self.scrape_date,
+                "fp_id": self.fp_id, "mfl_id": self.mfl_id}
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+class DPPickValue:
+    __slots__ = ("label","pick_round","pick_slot","pick_year","ecr_1qb","ecr_2qb","scrape_date")
+
+    def __init__(self, row: dict):
+        self.label: str = row.get("player", "").strip('"')
+        self.ecr_1qb: Optional[float] = _float(row.get("ecr_1qb"))
+        self.ecr_2qb: Optional[float] = _float(row.get("ecr_2qb"))
+        self.scrape_date: str = row.get("scrape_date", "")
+        self.pick_year, self.pick_round, self.pick_slot = _parse_pick_label(self.label)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "DPPickValue":
+        obj = cls.__new__(cls)
+        obj.label = d.get("label", "")
+        obj.ecr_1qb = d.get("ecr_1qb")
+        obj.ecr_2qb = d.get("ecr_2qb")
+        obj.scrape_date = d.get("scrape_date", "")
+        obj.pick_year = d.get("pick_year")
+        obj.pick_round = d.get("pick_round")
+        obj.pick_slot = d.get("pick_slot")
+        return obj
+
+    def to_dict(self) -> dict:
+        return {"label": self.label, "ecr_1qb": self.ecr_1qb, "ecr_2qb": self.ecr_2qb,
+                "scrape_date": self.scrape_date, "pick_year": self.pick_year,
+                "pick_round": self.pick_round, "pick_slot": self.pick_slot}
+
 
 def _float(v) -> Optional[float]:
     try:
@@ -132,17 +121,20 @@ def _int(v) -> Optional[int]:
     return int(f) if f is not None else None
 
 
+def _parse_pick_label(label: str) -> tuple[Optional[int], Optional[int], Optional[int]]:
+    m = re.search(r'(\d{4}).*?(\d+)\.(\d+)', label)
+    if m:
+        return int(m.group(1)), int(m.group(2)), int(m.group(3))
+    return None, None, None
+
+
 def _cache_fresh(path: Path) -> bool:
     return path.exists() and (time.time() - path.stat().st_mtime) < CACHE_TTL_SECONDS
 
 
 def _save_json(data: list[dict], path: Path, label: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "fetched_at": datetime.now(timezone.utc).isoformat(),
-        "count": len(data),
-        "players": data,
-    }
+    payload = {"fetched_at": datetime.now(timezone.utc).isoformat(), "count": len(data), "players": data}
     with open(path, "w") as f:
         json.dump(payload, f, indent=2)
     logger.info("DP cache saved: %d %s → %s", len(data), label, path)
@@ -156,120 +148,92 @@ def _load_json(path: Path) -> list[dict]:
 def _fetch_csv(url: str) -> list[dict]:
     resp = requests.get(url, timeout=REQUEST_TIMEOUT)
     resp.raise_for_status()
-    reader = csv.DictReader(io.StringIO(resp.text))
-    return list(reader)
+    return list(csv.DictReader(io.StringIO(resp.text)))
 
 
-# ---------------------------------------------------------------------------
-# Player ID crosswalk
-# ---------------------------------------------------------------------------
-
-def fetch_dp_playerids(
-    cache_path: Path = DEFAULT_IDS_CACHE,
-    force_refresh: bool = False,
-) -> dict[str, str]:
-    """
-    Fetch DynastyProcess player ID crosswalk.
-    Returns dict: fantasypros_id (str) → mfl_id (str)
-    """
+def fetch_dp_playerids(cache_path: Path = DEFAULT_IDS_CACHE, force_refresh: bool = False) -> dict[str, str]:
     if not force_refresh and _cache_fresh(cache_path):
-        logger.info("Loading DP player IDs from cache: %s", cache_path)
+        logger.info("Loading DP player IDs from cache")
         rows = _load_json(cache_path)
         return {r["fp_id"]: r["mfl_id"] for r in rows if r.get("fp_id") and r.get("mfl_id")}
-
     logger.info("Fetching DP player IDs from GitHub...")
     rows = _fetch_csv(DP_PLAYERIDS_URL)
-
-    # Save minimal crosswalk to cache
-    crosswalk = [
-        {"fp_id": r["fantasypros_id"], "mfl_id": r["mfl_id"]}
-        for r in rows
-        if r.get("fantasypros_id") and r.get("mfl_id")
-        and r["fantasypros_id"] not in ("", "NA")
-        and r["mfl_id"] not in ("", "NA")
-    ]
+    crosswalk = [{"fp_id": r["fantasypros_id"], "mfl_id": r["mfl_id"]}
+                 for r in rows if r.get("fantasypros_id") and r.get("mfl_id")
+                 and r["fantasypros_id"] not in ("", "NA") and r["mfl_id"] not in ("", "NA")]
     _save_json(crosswalk, cache_path, "player ID mappings")
     return {r["fp_id"]: r["mfl_id"] for r in crosswalk}
 
 
-# ---------------------------------------------------------------------------
-# Main fetcher
-# ---------------------------------------------------------------------------
-
-def fetch_dp_values(
-    values_cache: Path = DEFAULT_VALUES_CACHE,
-    ids_cache: Path = DEFAULT_IDS_CACHE,
-    force_refresh: bool = False,
-) -> list[DPPlayerValue]:
-    """
-    Fetch DynastyProcess dynasty values, joined with MFL IDs via crosswalk.
-    Returns list of DPPlayerValue sorted by value_1qb descending.
-    """
+def fetch_dp_values(values_cache: Path = DEFAULT_VALUES_CACHE,
+                    ids_cache: Path = DEFAULT_IDS_CACHE,
+                    force_refresh: bool = False) -> list[DPPlayerValue]:
     if not force_refresh and _cache_fresh(values_cache):
-        logger.info("Loading DP values from cache: %s", values_cache)
+        logger.info("Loading DP values from cache")
         return [DPPlayerValue.from_dict(d) for d in _load_json(values_cache)]
-
-    # Fetch crosswalk first (or from cache)
     fp_to_mfl = fetch_dp_playerids(cache_path=ids_cache, force_refresh=force_refresh)
-    logger.info("DP crosswalk: %d fp_id → mfl_id mappings", len(fp_to_mfl))
-
     logger.info("Fetching DP values from GitHub...")
     try:
         rows = _fetch_csv(DP_VALUES_URL)
     except requests.RequestException as e:
         if values_cache.exists():
-            logger.warning("DP fetch failed (%s) — using stale cache", e)
+            logger.warning("DP fetch failed (%s) — stale cache", e)
             return [DPPlayerValue.from_dict(d) for d in _load_json(values_cache)]
-        raise RuntimeError(f"DP fetch failed and no cache: {e}") from e
-
+        raise RuntimeError(f"DP fetch failed: {e}") from e
     players = []
     for row in rows:
         fp_id = row.get("fp_id", "").strip().strip('"')
-        mfl_id = fp_to_mfl.get(fp_id)
-        p = DPPlayerValue(row, mfl_id=mfl_id)
+        p = DPPlayerValue(row, mfl_id=fp_to_mfl.get(fp_id))
         if p.value_1qb > 0:
             players.append(p)
-
     players.sort(key=lambda p: p.value_1qb, reverse=True)
     _save_json([p.to_dict() for p in players], values_cache, "DP values")
-
     matched = sum(1 for p in players if p.mfl_id)
-    logger.info(
-        "DP values: %d players, %d with MFL IDs (%.0f%%), top: %s",
-        len(players), matched, 100 * matched / len(players) if players else 0,
-        players[0].name if players else "none",
-    )
+    logger.info("DP: %d players, %d MFL IDs (%.0f%%)", len(players), matched,
+                100 * matched / len(players) if players else 0)
     return players
 
 
 def build_dp_mfl_map(players: list[DPPlayerValue]) -> dict[str, DPPlayerValue]:
-    """Build dict of mfl_id → DPPlayerValue for roster lookups."""
     return {p.mfl_id: p for p in players if p.mfl_id}
 
 
-# ---------------------------------------------------------------------------
-# CLI test
-# ---------------------------------------------------------------------------
+def fetch_dp_picks(cache_path: Path = DEFAULT_PICKS_CACHE,
+                   force_refresh: bool = False) -> list[DPPickValue]:
+    if not force_refresh and _cache_fresh(cache_path):
+        logger.info("Loading DP picks from cache")
+        return [DPPickValue.from_dict(d) for d in _load_json(cache_path)]
+    logger.info("Fetching DP pick values from GitHub...")
+    try:
+        rows = _fetch_csv(DP_PICKS_URL)
+    except requests.RequestException as e:
+        if cache_path.exists():
+            logger.warning("DP picks fetch failed (%s) — stale cache", e)
+            return [DPPickValue.from_dict(d) for d in _load_json(cache_path)]
+        logger.warning("DP picks unavailable: %s", e)
+        return []
+    picks = []
+    for row in rows:
+        row["player"] = row.get("player", "").strip('"')
+        p = DPPickValue(row)
+        if p.pick_round is not None and p.ecr_1qb is not None:
+            picks.append(p)
+    picks.sort(key=lambda p: (p.pick_round or 99, p.pick_slot or 99))
+    _save_json([p.to_dict() for p in picks], cache_path, "DP picks")
+    logger.info("DP picks: %d slots", len(picks))
+    return picks
+
 
 if __name__ == "__main__":
     import sys
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     force = "--force" in sys.argv
-
     players = fetch_dp_values(force_refresh=force)
+    picks = fetch_dp_picks(force_refresh=force)
     matched = sum(1 for p in players if p.mfl_id)
-
-    print(f"\nDynastyProcess Values — {len(players)} players, {matched} with MFL IDs")
-    print(f"{'#':<5} {'Player':<28} {'Pos':<5} {'Team':<5} {'Age':<6} {'Value':<8} {'ECR':<6} MFL_ID")
-    print("-" * 75)
-    for i, p in enumerate(players[:30], 1):
-        age_str = f"{p.age:.1f}" if p.age else "?"
-        ecr_str = f"{p.ecr_1qb:.1f}" if p.ecr_1qb else "?"
-        print(
-            f"{i:<5} {p.name:<28} {p.position:<5} {p.nfl_team:<5} "
-            f"{age_str:<6} {p.value_1qb:<8} {ecr_str:<6} {p.mfl_id or '—'}"
-        )
-
-    print(f"\nMFL ID coverage: {matched}/{len(players)} ({100*matched//len(players) if players else 0}%)")
-    if players:
-        print(f"Scrape date: {players[0].scrape_date}")
+    print(f"\nDP Values: {len(players)} players, {matched} MFL IDs")
+    for i, p in enumerate(players[:10], 1):
+        print(f"  {i:<3} {p.name:<28} {p.position:<4} {p.value_1qb:<7} MFL={p.mfl_id}")
+    print(f"\nDP Picks: {len(picks)} slots")
+    for p in picks[:16]:
+        print(f"  {p.label:<22} R{p.pick_round}.{p.pick_slot:02d}  ecr={p.ecr_1qb}")
