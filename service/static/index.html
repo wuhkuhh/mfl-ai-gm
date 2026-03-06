@@ -1220,16 +1220,24 @@ async function doSearch(side, q) {
 function showAC(side, players) {
   const el = document.getElementById('ac-' + side);
   if (!players.length) { el.style.display = 'none'; return; }
+  // Store results in a map keyed by index to avoid JSON-in-onclick issues
+  window._acResults = window._acResults || {};
+  window._acResults[side] = players;
   el.innerHTML = players.map((p,i) => {
     const pos = p.position || '?';
-    return `<div class="ac-item" onclick="addPlayerToSide('${side}', ${JSON.stringify(p).replace(/"/g,'&quot;')})">
+    return `<div class="ac-item" onclick="addPlayerByIndex('${side}', ${i})">
       <span class="pos-badge pos-${pos}">${pos}</span>
       <span class="ac-name">${p.name}</span>
-      <span class="ac-meta">${p.nfl_team} · ${p.age?.toFixed(1) || '—'}</span>
+      <span class="ac-meta">${p.nfl_team || ''} · ${p.age?.toFixed(1) || '—'}</span>
       <span class="ac-val">${p.consensus_score.toFixed(1)}</span>
     </div>`;
   }).join('');
   el.style.display = 'block';
+}
+
+function addPlayerByIndex(side, idx) {
+  const player = (window._acResults || {})[side]?.[idx];
+  if (player) addPlayerToSide(side, player);
 }
 
 function hideAC(side) {
