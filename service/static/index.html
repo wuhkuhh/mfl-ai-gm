@@ -3,541 +3,1416 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Purple Monkey Dynasty League — AI GM</title>
+<title>MFL AI GM — Purple Monkey Dynasty</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg:#080810;--bg2:#0d0d1a;--bg3:#12121f;--border:#1e1e35;--border2:#2a2a45;
-    --accent:#a855f7;--accent2:#7c3aed;--accent-dim:#a855f720;
-    --accent-glow:0 0 24px #a855f740;--text:#e8e8f0;--text2:#9090b0;--text3:#5a5a80;
-    --green:#34d399;--yellow:#fbbf24;--red:#f87171;--blue:#60a5fa;
-    --sidebar:220px;--font-head:'Syne',sans-serif;--font-mono:'JetBrains Mono',monospace;
-  }
-  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-  body{background:var(--bg);color:var(--text);font-family:var(--font-mono);font-size:13px;min-height:100vh;overflow-x:hidden}
-  #sidebar{position:fixed;top:0;left:0;width:var(--sidebar);height:100vh;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;z-index:100;overflow:hidden}
-  .sidebar-logo{padding:24px 20px 20px;border-bottom:1px solid var(--border)}
-  .sidebar-logo .monkey{font-size:28px;line-height:1;margin-bottom:8px}
-  .sidebar-logo .title{font-family:var(--font-head);font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);line-height:1.4}
-  .sidebar-logo .subtitle{font-size:10px;color:var(--text3);margin-top:2px;letter-spacing:.08em}
-  .sidebar-nav{flex:1;padding:12px 0;overflow-y:auto}
-  .nav-section{padding:8px 20px 4px;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--text3);font-weight:500}
-  .nav-item{display:flex;align-items:center;gap:10px;padding:9px 20px;cursor:pointer;color:var(--text2);transition:all .15s;border-left:2px solid transparent;font-size:12px;letter-spacing:.02em}
-  .nav-item:hover{color:var(--text);background:var(--accent-dim)}
-  .nav-item.active{color:var(--accent);border-left-color:var(--accent);background:var(--accent-dim)}
-  .nav-icon{font-size:14px;width:18px;text-align:center}
-  .sidebar-footer{padding:16px 20px;border-top:1px solid var(--border)}
-  .status-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green);margin-right:6px;animation:pulse 2s infinite}
-  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-  .status-text{font-size:10px;color:var(--text3)}
-  #main{margin-left:var(--sidebar);min-height:100vh}
-  .topbar{position:sticky;top:0;background:var(--bg)cc;backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:14px 32px;display:flex;align-items:center;justify-content:space-between;z-index:50}
-  .topbar-title{font-family:var(--font-head);font-size:16px;font-weight:700;letter-spacing:.04em}
-  .topbar-meta{display:flex;align-items:center;gap:20px;font-size:11px;color:var(--text3)}
-  .topbar-meta span{color:var(--text2)}
-  .refresh-btn{background:var(--accent-dim);border:1px solid var(--accent);color:var(--accent);padding:6px 14px;border-radius:4px;cursor:pointer;font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;transition:all .15s}
-  .refresh-btn:hover{background:var(--accent);color:#000;box-shadow:var(--accent-glow)}
-  .refresh-btn:disabled{opacity:.4;cursor:not-allowed}
-  .page{display:none;padding:28px 32px}
-  .page.active{display:block}
-  .page-header{margin-bottom:24px;padding-bottom:16px;border-bottom:1px solid var(--border)}
-  .page-header h1{font-family:var(--font-head);font-size:22px;font-weight:800;letter-spacing:.02em}
-  .page-header p{color:var(--text3);margin-top:4px;font-size:11px}
-  .card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:20px}
-  .card-title{font-family:var(--font-head);font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:16px;display:flex;align-items:center;gap:8px}
-  .data-table{width:100%;border-collapse:collapse;font-size:12px}
-  .data-table th{text-align:left;padding:8px 12px;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border);font-weight:500}
-  .data-table td{padding:10px 12px;border-bottom:1px solid var(--border);color:var(--text2);transition:background .1s}
-  .data-table tr:hover td{background:var(--accent-dim)}
-  .data-table tr:last-child td{border-bottom:none}
-  .data-table td.name{color:var(--text);font-weight:500;font-family:var(--font-head);font-size:13px}
-  .data-table td.num{font-variant-numeric:tabular-nums;text-align:right}
-  .badge{display:inline-block;padding:2px 8px;border-radius:3px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
-  .badge-contend{background:#34d39920;color:var(--green);border:1px solid #34d39940}
-  .badge-transition{background:#fbbf2420;color:var(--yellow);border:1px solid #fbbf2440}
-  .badge-rebuild{background:#f8717120;color:var(--red);border:1px solid #f8717140}
-  .badge-grade-a{background:#34d39920;color:var(--green)}
-  .badge-grade-b{background:#60a5fa20;color:var(--blue)}
-  .badge-grade-c{background:#fbbf2420;color:var(--yellow)}
-  .badge-grade-d{background:#f8717120;color:var(--red)}
-  .badge-strong-sell{background:#f8717130;color:var(--red);border:1px solid #f8717150}
-  .badge-consider{background:#fbbf2430;color:var(--yellow);border:1px solid #fbbf2450}
-  .badge-hold{background:#60a5fa20;color:var(--blue);border:1px solid #60a5fa40}
-  .badge-buy{background:#34d39920;color:var(--green);border:1px solid #34d39940}
-  .score-bar-wrap{display:flex;align-items:center;gap:8px}
-  .score-bar{flex:1;height:4px;background:var(--border2);border-radius:2px;overflow:hidden}
-  .score-bar-fill{height:100%;border-radius:2px;transition:width .6s ease}
-  .score-val{font-variant-numeric:tabular-nums;font-size:11px;color:var(--text2);min-width:32px;text-align:right}
-  .rank-num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:4px;font-size:11px;font-weight:700;background:var(--border);color:var(--text2)}
-  .rank-num.top3{background:var(--accent-dim);color:var(--accent)}
-  .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
-  .kpi{background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:14px 16px}
-  .kpi-label{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);margin-bottom:6px}
-  .kpi-value{font-family:var(--font-head);font-size:22px;font-weight:800;color:var(--text);line-height:1}
-  .kpi-sub{font-size:10px;color:var(--text3);margin-top:4px}
-  .window-row{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)}
-  .window-row:last-child{border-bottom:none}
-  .window-name{width:200px;font-family:var(--font-head);font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .window-bar-wrap{flex:1}
-  .pos-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px}
-  .pos-card{background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:12px;text-align:center}
-  .pos-card .pos-label{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);margin-bottom:6px}
-  .pos-card .pos-score{font-family:var(--font-head);font-size:20px;font-weight:800;color:var(--text)}
-  .pos-card .pos-grade{font-size:10px;margin-top:2px}
-  .player-list{display:flex;flex-direction:column;gap:4px}
-  .player-row{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:4px;transition:background .1s}
-  .player-row:hover{background:var(--accent-dim)}
-  .player-pos{width:28px;text-align:center;font-size:9px;font-weight:700;letter-spacing:.08em;padding:2px 4px;border-radius:3px}
-  .pos-QB{background:#60a5fa20;color:var(--blue)}
-  .pos-RB{background:#34d39920;color:var(--green)}
-  .pos-WR{background:#a855f720;color:var(--accent)}
-  .pos-TE{background:#fbbf2420;color:var(--yellow)}
-  .player-name{flex:1;color:var(--text);font-size:12px}
-  .player-team{color:var(--text3);font-size:10px}
-  .player-age{color:var(--text3);font-size:10px;min-width:40px;text-align:right}
-  .need-bar-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)}
-  .need-bar-row:last-child{border-bottom:none}
-  .need-pos-label{width:36px;font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--text2)}
-  .need-meta{font-size:10px;color:var(--text3);min-width:140px}
-  .waiver-rec-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
-  .waiver-rec-row:last-child{border-bottom:none}
-  .waiver-rank{width:24px;font-size:11px;color:var(--text3);text-align:right;font-variant-numeric:tabular-nums}
-  .waiver-name{flex:1;color:var(--text);font-family:var(--font-head);font-size:13px;font-weight:600}
-  .waiver-reason{font-size:10px;color:var(--text3);flex:1}
-  .preseason-notice{background:#fbbf2410;border:1px solid #fbbf2430;border-radius:6px;padding:14px 16px;font-size:12px;color:var(--yellow);margin-bottom:16px}
-  .franchise-select{background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:8px 12px;border-radius:4px;font-family:var(--font-mono);font-size:12px;cursor:pointer;margin-bottom:20px;width:100%;max-width:320px}
-  .franchise-select:focus{outline:none;border-color:var(--accent)}
-  .filter-btn{background:var(--bg3);border:1px solid var(--border2);color:var(--text2);padding:6px 12px;border-radius:4px;cursor:pointer;font-family:var(--font-mono);font-size:11px;transition:all .15s;margin-right:6px;margin-bottom:12px}
-  .filter-btn:hover,.filter-btn.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
-  .trend-up{color:var(--green)}
-  .trend-dn{color:var(--red)}
-  .trend-flat{color:var(--text3)}
-  .loading{display:flex;align-items:center;justify-content:center;padding:60px;color:var(--text3);flex-direction:column;gap:12px}
-  .spinner{width:24px;height:24px;border:2px solid var(--border2);border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite}
-  @keyframes spin{to{transform:rotate(360deg)}}
-  .empty{color:var(--text3);text-align:center;padding:40px;font-size:12px}
-  ::-webkit-scrollbar{width:4px}
-  ::-webkit-scrollbar-track{background:var(--bg)}
-  ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
-  ::-webkit-scrollbar-thumb:hover{background:var(--accent)}
-  .fade-in{animation:fadeIn .3s ease}
-  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-  .accent{color:var(--accent)}.muted{color:var(--text3)}.mono{font-family:var(--font-mono)}
+:root {
+  --bg:       #0a0a0f;
+  --bg2:      #111118;
+  --bg3:      #18181f;
+  --border:   #2a2a35;
+  --accent:   #7c5cfc;
+  --accent2:  #c084fc;
+  --accent3:  #38bdf8;
+  --green:    #4ade80;
+  --red:      #f87171;
+  --yellow:   #fbbf24;
+  --text:     #e8e8f0;
+  --muted:    #6b6b80;
+  --card-bg:  #13131a;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── GRID NOISE BACKGROUND ── */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 20% 10%, rgba(124,92,252,0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 80%, rgba(192,132,252,0.04) 0%, transparent 50%);
+  pointer-events: none; z-index: 0;
+}
+
+/* ── SIDEBAR ── */
+#sidebar {
+  position: fixed; left: 0; top: 0; bottom: 0; width: 200px;
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  z-index: 100;
+}
+.logo {
+  padding: 20px 16px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.logo .league-name {
+  font-family: 'Syne', sans-serif;
+  font-weight: 800; font-size: 11px;
+  color: var(--accent2);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.logo .app-name {
+  font-family: 'Syne', sans-serif;
+  font-weight: 700; font-size: 18px;
+  color: var(--text);
+  line-height: 1.1;
+  margin-top: 2px;
+}
+.logo .version {
+  font-size: 10px; color: var(--muted);
+  margin-top: 4px;
+}
+nav { flex: 1; padding: 8px 0; overflow-y: auto; }
+.nav-section {
+  font-size: 9px; font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  padding: 12px 16px 4px;
+}
+.nav-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+  transition: all 0.15s;
+  border-left: 2px solid transparent;
+  white-space: nowrap;
+}
+.nav-item:hover { color: var(--text); background: rgba(124,92,252,0.06); }
+.nav-item.active {
+  color: var(--accent2);
+  border-left-color: var(--accent);
+  background: rgba(124,92,252,0.1);
+}
+.nav-item .icon { font-size: 14px; width: 16px; text-align: center; }
+.status-bar {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  font-size: 10px; color: var(--muted);
+}
+.status-dot {
+  display: inline-block; width: 6px; height: 6px;
+  border-radius: 50%; background: var(--green);
+  margin-right: 5px;
+  animation: pulse 2s infinite;
+}
+@keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:0.4 } }
+
+/* ── MAIN ── */
+#main {
+  margin-left: 200px;
+  min-height: 100vh;
+  position: relative; z-index: 1;
+}
+
+/* ── TOPBAR ── */
+#topbar {
+  height: 48px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center;
+  padding: 0 24px;
+  gap: 16px;
+  position: sticky; top: 0; z-index: 50;
+}
+.topbar-title {
+  font-family: 'Syne', sans-serif;
+  font-weight: 700; font-size: 15px;
+  color: var(--text);
+  flex: 1;
+}
+.topbar-badge {
+  font-size: 10px; padding: 3px 8px;
+  background: rgba(124,92,252,0.15);
+  border: 1px solid rgba(124,92,252,0.3);
+  border-radius: 4px;
+  color: var(--accent2);
+}
+
+/* ── CONTENT ── */
+.tab-content { display: none; padding: 24px; }
+.tab-content.active { display: block; }
+
+/* ── CARDS ── */
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+}
+.card-title {
+  font-family: 'Syne', sans-serif;
+  font-weight: 700; font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+/* ── GRID LAYOUTS ── */
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+
+/* ── KPI TILES ── */
+.kpi {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+.kpi-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
+.kpi-value {
+  font-family: 'Syne', sans-serif;
+  font-weight: 800; font-size: 26px;
+  color: var(--text);
+  line-height: 1.1;
+  margin-top: 4px;
+}
+.kpi-sub { font-size: 10px; color: var(--muted); margin-top: 3px; }
+.kpi-green .kpi-value { color: var(--green); }
+.kpi-yellow .kpi-value { color: var(--yellow); }
+.kpi-red .kpi-value { color: var(--red); }
+.kpi-accent .kpi-value { color: var(--accent2); }
+
+/* ── TABLES ── */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th {
+  font-size: 9px; font-weight: 600;
+  color: var(--muted); letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+.data-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(42,42,53,0.5);
+  font-size: 12px;
+  vertical-align: middle;
+}
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tr:hover td { background: rgba(124,92,252,0.04); }
+.data-table .rank { color: var(--muted); font-size: 11px; width: 32px; }
+.data-table .name { font-weight: 500; color: var(--text); }
+.data-table .pos-badge {
+  display: inline-block;
+  font-size: 9px; font-weight: 700;
+  padding: 2px 5px; border-radius: 3px;
+  min-width: 26px; text-align: center;
+}
+.pos-QB { background: rgba(251,191,36,0.15); color: var(--yellow); }
+.pos-RB { background: rgba(74,222,128,0.12); color: var(--green); }
+.pos-WR { background: rgba(56,189,248,0.12); color: var(--accent3); }
+.pos-TE { background: rgba(251,113,133,0.12); color: #f87171; }
+.pos-PI { background: rgba(124,92,252,0.12); color: var(--accent2); }
+.pos-K  { background: rgba(107,107,128,0.15); color: var(--muted); }
+.pos-Def{ background: rgba(107,107,128,0.15); color: var(--muted); }
+
+/* ── VALUE BAR ── */
+.val-bar-wrap { display: flex; align-items: center; gap: 8px; }
+.val-bar-track {
+  flex: 1; height: 4px;
+  background: var(--border); border-radius: 2px;
+  overflow: hidden; max-width: 80px;
+}
+.val-bar-fill {
+  height: 100%; border-radius: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  transition: width 0.4s ease;
+}
+.val-num { font-size: 11px; color: var(--accent2); min-width: 28px; text-align: right; }
+
+/* ── TREND ── */
+.trend-up   { color: var(--green); }
+.trend-down { color: var(--red); }
+.trend-flat { color: var(--muted); }
+
+/* ── SOURCE PILLS ── */
+.source-pills { display: flex; gap: 4px; }
+.pill {
+  font-size: 9px; padding: 1px 5px;
+  border-radius: 3px; font-weight: 600;
+  border: 1px solid transparent;
+}
+.pill-ktc { background: rgba(124,92,252,0.15); color: var(--accent); border-color: rgba(124,92,252,0.3); }
+.pill-fc  { background: rgba(56,189,248,0.1);  color: var(--accent3); border-color: rgba(56,189,248,0.25); }
+.pill-dp  { background: rgba(74,222,128,0.1);  color: var(--green); border-color: rgba(74,222,128,0.25); }
+
+/* ── BUTTONS ── */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 14px;
+  border-radius: 6px; border: none;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px; font-weight: 500;
+  cursor: pointer; transition: all 0.15s;
+}
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+.btn-primary:hover { background: #6a4de8; }
+.btn-secondary {
+  background: var(--bg3);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn-secondary:hover { border-color: var(--accent); color: var(--accent2); }
+.btn-danger {
+  background: rgba(248,113,113,0.12);
+  color: var(--red);
+  border: 1px solid rgba(248,113,113,0.25);
+}
+.btn-danger:hover { background: rgba(248,113,113,0.2); }
+.btn-sm { padding: 4px 10px; font-size: 10px; }
+
+/* ── INPUTS ── */
+.input {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  padding: 7px 10px;
+  outline: none;
+  transition: border-color 0.15s;
+  width: 100%;
+}
+.input:focus { border-color: var(--accent); }
+.input::placeholder { color: var(--muted); }
+select.input { cursor: pointer; }
+
+/* ── LOADING / EMPTY ── */
+.loading {
+  display: flex; align-items: center; justify-content: center;
+  gap: 8px; padding: 40px;
+  color: var(--muted); font-size: 12px;
+}
+.spinner {
+  width: 16px; height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.empty { padding: 32px; text-align: center; color: var(--muted); font-size: 12px; }
+
+/* ── WINDOW BADGE ── */
+.window-badge {
+  display: inline-block;
+  font-size: 10px; font-weight: 700;
+  padding: 3px 8px; border-radius: 4px;
+  letter-spacing: 0.05em;
+}
+.window-CONTENDING   { background: rgba(74,222,128,0.15); color: var(--green); }
+.window-REBUILDING   { background: rgba(248,113,113,0.12); color: var(--red); }
+.window-TRANSITIONING{ background: rgba(251,191,36,0.12); color: var(--yellow); }
+.window-DYNASTY      { background: rgba(124,92,252,0.15); color: var(--accent2); }
+
+/* ── GRADE BADGE ── */
+.grade {
+  font-family: 'Syne', sans-serif;
+  font-weight: 800; font-size: 18px;
+}
+.grade-A { color: var(--green); }
+.grade-B { color: var(--accent3); }
+.grade-C { color: var(--yellow); }
+.grade-D { color: var(--red); }
+.grade-F { color: #ef4444; }
+
+/* ── TRADE CALCULATOR ── */
+.trade-layout {
+  display: grid;
+  grid-template-columns: 1fr 80px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.trade-side {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.trade-side-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.trade-side-title {
+  font-family: 'Syne', sans-serif;
+  font-weight: 700; font-size: 13px;
+}
+.trade-side-score {
+  font-family: 'Syne', sans-serif;
+  font-weight: 800; font-size: 22px;
+  color: var(--accent2);
+}
+.trade-assets { padding: 8px; min-height: 80px; }
+.trade-asset {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 6px;
+  animation: slideIn 0.2s ease;
+}
+@keyframes slideIn { from { opacity:0; transform:translateY(-4px) } to { opacity:1; transform:none } }
+.trade-asset-name { flex: 1; font-size: 12px; font-weight: 500; }
+.trade-asset-val { font-size: 13px; color: var(--accent2); font-weight: 600; min-width: 36px; text-align: right; }
+.trade-asset-remove {
+  cursor: pointer; color: var(--muted);
+  font-size: 14px; padding: 0 2px;
+  transition: color 0.15s;
+}
+.trade-asset-remove:hover { color: var(--red); }
+.trade-add-row {
+  padding: 8px;
+  border-top: 1px solid var(--border);
+  display: flex; gap: 6px;
+}
+.trade-vs {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 8px; padding-top: 40px;
+}
+.trade-vs-label {
+  font-family: 'Syne', sans-serif;
+  font-weight: 800; font-size: 20px;
+  color: var(--muted);
+}
+
+/* ── VERDICT ── */
+.verdict-panel {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  margin-top: 16px;
+}
+.verdict-fairness {
+  font-family: 'Syne', sans-serif;
+  font-weight: 800; font-size: 28px;
+}
+.fairness-Fair      { color: var(--green); }
+.fairness-Slight    { color: var(--yellow); }
+.fairness-Significant { color: var(--yellow); }
+.fairness-Lopsided  { color: var(--red); }
+.verdict-delta-bar {
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 12px 0;
+}
+.verdict-delta-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+.verdict-summary { color: var(--text); font-size: 12px; line-height: 1.6; }
+.verdict-rec {
+  margin-top: 10px; padding: 10px 14px;
+  background: var(--bg3);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+  font-size: 12px; color: var(--text);
+}
+.disputed-flag {
+  margin-top: 8px; padding: 8px 12px;
+  background: rgba(251,191,36,0.06);
+  border: 1px solid rgba(251,191,36,0.2);
+  border-radius: 6px;
+  font-size: 11px; color: var(--yellow);
+}
+
+/* ── AUTOCOMPLETE ── */
+.autocomplete-wrap { position: relative; flex: 1; }
+.autocomplete-results {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  z-index: 200;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.ac-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  display: flex; align-items: center; gap: 8px;
+  transition: background 0.1s;
+}
+.ac-item:hover { background: rgba(124,92,252,0.1); }
+.ac-name { flex: 1; font-size: 12px; }
+.ac-meta { font-size: 10px; color: var(--muted); }
+.ac-val { font-size: 11px; color: var(--accent2); }
+
+/* ── VALUES TAB ── */
+.values-filters {
+  display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;
+}
+.filter-btn {
+  padding: 5px 12px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.filter-btn:hover { border-color: var(--accent); color: var(--accent2); }
+.filter-btn.active {
+  background: rgba(124,92,252,0.15);
+  border-color: var(--accent);
+  color: var(--accent2);
+}
+.search-input-wrap { position: relative; flex: 1; min-width: 200px; }
+.search-icon {
+  position: absolute; left: 10px; top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted); font-size: 12px;
+  pointer-events: none;
+}
+
+/* ── SCROLLBARS ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg2); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* ── SECTION HEADER ── */
+.section-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px;
+}
+.section-title {
+  font-family: 'Syne', sans-serif;
+  font-weight: 700; font-size: 16px;
+  color: var(--text);
+}
+.section-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+/* ── TAG ── */
+.tag {
+  display: inline-block; font-size: 9px; font-weight: 600;
+  padding: 2px 6px; border-radius: 3px;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.tag-disputed { background: rgba(251,191,36,0.12); color: var(--yellow); }
+.tag-ktc-high { background: rgba(124,92,252,0.12); color: var(--accent2); }
+.tag-fc-high  { background: rgba(56,189,248,0.1); color: var(--accent3); }
+.tag-dp-high  { background: rgba(74,222,128,0.1); color: var(--green); }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 1200px) {
+  .grid-4 { grid-template-columns: repeat(2, 1fr); }
+}
 </style>
 </head>
 <body>
 
-<nav id="sidebar">
-  <div class="sidebar-logo">
-    <div class="monkey">🐒</div>
-    <div class="title">Purple Monkey<br>Dynasty League</div>
-    <div class="subtitle">AI GM · 2026</div>
+<!-- ── SIDEBAR ── -->
+<div id="sidebar">
+  <div class="logo">
+    <div class="league-name">Purple Monkey</div>
+    <div class="app-name">MFL AI GM</div>
+    <div class="version">v2.0 · 2026 Season</div>
   </div>
-  <div class="sidebar-nav">
-    <div class="nav-section">League</div>
-    <div class="nav-item active" data-page="standings"><span class="nav-icon">📊</span> Standings</div>
-    <div class="nav-item" data-page="dashboard"><span class="nav-icon">⚡</span> Dashboard</div>
+  <nav>
+    <div class="nav-section">Overview</div>
+    <div class="nav-item active" onclick="showTab('dashboard')">
+      <span class="icon">◈</span> Dashboard
+    </div>
+    <div class="nav-item" onclick="showTab('matchup')">
+      <span class="icon">⚡</span> Matchup
+    </div>
+    <div class="nav-section">Roster</div>
+    <div class="nav-item" onclick="showTab('waivers')">
+      <span class="icon">＋</span> Waivers / FA
+    </div>
+    <div class="nav-item" onclick="showTab('trades')">
+      <span class="icon">⇄</span> Trades
+    </div>
     <div class="nav-section">Dynasty</div>
-    <div class="nav-item" data-page="dynasty"><span class="nav-icon">🏆</span> Dynasty Tools</div>
-    <div class="nav-item" data-page="roster"><span class="nav-icon">📋</span> Roster Viewer</div>
-    <div class="nav-item" data-page="values"><span class="nav-icon">💰</span> Values</div>
-    <div class="nav-section">Weekly</div>
-    <div class="nav-item" data-page="waivers"><span class="nav-icon">🔍</span> Waivers</div>
-    <div class="nav-section">Analysis</div>
-    <div class="nav-item" data-page="intel"><span class="nav-icon">🔬</span> League Intel</div>
-  </div>
-  <div class="sidebar-footer">
-    <div><span class="status-dot"></span><span class="status-text" id="status-text">Loading...</span></div>
-    <div style="margin-top:6px;font-size:10px;color:var(--text3)" id="snapshot-age"></div>
-  </div>
-</nav>
-
-<div id="main">
-  <div class="topbar">
-    <div class="topbar-title" id="topbar-title">Standings</div>
-    <div class="topbar-meta">
-      <span id="meta-league">—</span>
-      <span>Season <span id="meta-season">—</span></span>
-      <span>Week <span id="meta-week">—</span></span>
-      <button class="refresh-btn" id="refresh-btn" onclick="refreshSnapshot()">↻ Refresh</button>
+    <div class="nav-item" onclick="showTab('values')">
+      <span class="icon">◎</span> Player Values
     </div>
-  </div>
-
-  <!-- STANDINGS -->
-  <div class="page active" id="page-standings">
-    <div class="page-header"><h1>Standings</h1><p>Current win/loss record and points</p></div>
-    <div class="card">
-      <div class="card-title">📊 League Standings</div>
-      <div id="standings-table"><div class="loading"><div class="spinner"></div>Loading...</div></div>
+    <div class="nav-item" onclick="showTab('windows')">
+      <span class="icon">◷</span> Contention
     </div>
-  </div>
-
-  <!-- DASHBOARD -->
-  <div class="page" id="page-dashboard">
-    <div class="page-header"><h1>Dashboard</h1><p>Power rankings and roster construction scores</p></div>
-    <div id="dashboard-kpis" class="kpi-grid"></div>
-    <div class="card">
-      <div class="card-title">🏗️ Roster Construction Rankings</div>
-      <div id="construction-table"><div class="loading"><div class="spinner"></div>Loading...</div></div>
+    <div class="nav-item" onclick="showTab('construction')">
+      <span class="icon">▦</span> Construction
     </div>
-  </div>
-
-  <!-- DYNASTY -->
-  <div class="page" id="page-dynasty">
-    <div class="page-header"><h1>Dynasty Tools</h1><p>Contention windows, age curves, and dynasty trajectory</p></div>
-    <div class="card">
-      <div class="card-title">🏆 Contention Windows</div>
-      <div id="windows-chart"><div class="loading"><div class="spinner"></div>Loading...</div></div>
+    <div class="nav-section">League</div>
+    <div class="nav-item" onclick="showTab('standings')">
+      <span class="icon">≡</span> Standings
     </div>
-    <div class="card">
-      <div class="card-title">📈 Age Curve Detail</div>
-      <div id="windows-detail"></div>
+    <div class="nav-item" onclick="showTab('sellhigh')">
+      <span class="icon">↑</span> Sell High
     </div>
-  </div>
-
-  <!-- ROSTER VIEWER -->
-  <div class="page" id="page-roster">
-    <div class="page-header"><h1>Roster Viewer</h1><p>Full franchise breakdown — construction score, age curve, players</p></div>
-    <select class="franchise-select" id="franchise-select" onchange="loadFranchise(this.value)">
-      <option value="">Select a franchise...</option>
-    </select>
-    <div id="franchise-detail"></div>
-  </div>
-
-  <!-- VALUES -->
-  <div class="page" id="page-values">
-    <div class="page-header"><h1>Values</h1><p>FantasyCalc dynasty trade values + sell-high signals</p></div>
-    <div class="card">
-      <div class="card-title">🔥 League-Wide Sell-High Signals</div>
-      <div id="sell-all-table"><div class="loading"><div class="spinner"></div>Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-title">
-        💰 Dynasty Value Rankings
-        <span style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap" id="pos-filters">
-          <button class="filter-btn active" onclick="filterValues('')">All</button>
-          <button class="filter-btn" onclick="filterValues('QB')">QB</button>
-          <button class="filter-btn" onclick="filterValues('RB')">RB</button>
-          <button class="filter-btn" onclick="filterValues('WR')">WR</button>
-          <button class="filter-btn" onclick="filterValues('TE')">TE</button>
-        </span>
-      </div>
-      <div id="values-table"><div class="loading"><div class="spinner"></div>Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-title">🎯 Sell-High by Franchise</div>
-      <select class="franchise-select" id="sell-franchise-select" onchange="loadSellHigh(this.value)">
-        <option value="">Select a franchise...</option>
-      </select>
-      <div id="sell-detail"></div>
-    </div>
-  </div>
-
-  <!-- WAIVERS -->
-  <div class="page" id="page-waivers">
-    <div class="page-header"><h1>Waivers</h1><p>Free agent recommendations ranked by roster need and dynasty value</p></div>
-    <select class="franchise-select" id="waiver-franchise-select" onchange="loadWaivers(this.value)">
-      <option value="">Select a franchise...</option>
-    </select>
-    <div id="waiver-detail"></div>
-  </div>
-
-  <!-- LEAGUE INTEL -->
-  <div class="page" id="page-intel">
-    <div class="page-header"><h1>League Intel</h1><p>Age map and construction scores across all franchises</p></div>
-    <div class="card">
-      <div class="card-title">🗺️ League Age Map</div>
-      <div id="age-map"><div class="loading"><div class="spinner"></div>Loading...</div></div>
-    </div>
-    <div class="card">
-      <div class="card-title">🔬 Construction Score Breakdown</div>
-      <div id="intel-construction"></div>
-    </div>
+  </nav>
+  <div class="status-bar">
+    <span class="status-dot"></span>
+    <span id="status-text">Loading...</span>
   </div>
 </div>
 
-<script>
-const API='';
-let state={construction:null,windows:null,franchises:[],fcValues:[],sellReports:[]};
+<!-- ── MAIN ── -->
+<div id="main">
+  <div id="topbar">
+    <div class="topbar-title" id="topbar-title">Dashboard</div>
+    <span class="topbar-badge" id="topbar-badge">Week 1</span>
+    <button class="btn btn-secondary btn-sm" onclick="refreshSnapshot()">↻ Refresh</button>
+  </div>
 
-document.querySelectorAll('.nav-item').forEach(item=>{
-  item.addEventListener('click',()=>{
-    document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
-    document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-    item.classList.add('active');
-    const page=item.dataset.page;
-    document.getElementById('page-'+page).classList.add('active');
-    document.getElementById('topbar-title').textContent=item.textContent.trim();
-    renderPage(page);
-  });
-});
-
-async function api(path){const r=await fetch(API+path);if(!r.ok)throw new Error(await r.text());return r.json()}
-
-async function boot(){
-  try{
-    const health=await api('/health');
-    document.getElementById('meta-league').textContent=health.league||'—';
-    document.getElementById('meta-season').textContent=health.season||'—';
-    document.getElementById('meta-week').textContent=health.week||'—';
-    document.getElementById('status-text').textContent='Live';
-    if(!health.snapshot_loaded){document.getElementById('status-text').textContent='No snapshot';return}
-
-    const[construction,windows,fcValues,sellReports]=await Promise.all([
-      api('/api/roster-construction'),
-      api('/api/contention-windows'),
-      api('/api/values'),
-      api('/api/sell-high'),
-    ]);
-    state.construction=construction;state.windows=windows;
-    state.fcValues=fcValues;state.sellReports=sellReports;
-    state.franchises=construction.map(c=>({id:c.franchise_id,name:c.franchise_name}));
-
-    ['franchise-select','waiver-franchise-select','sell-franchise-select'].forEach(selId=>{
-      const sel=document.getElementById(selId);
-      state.franchises.forEach(f=>{const opt=document.createElement('option');opt.value=f.id;opt.textContent=f.name;sel.appendChild(opt)});
-    });
-
-    const snap=await api('/api/snapshot/status');
-    if(snap.last_refreshed){const d=new Date(snap.last_refreshed);document.getElementById('snapshot-age').textContent='Snap: '+d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}
-
-    renderPage('standings');
-  }catch(e){document.getElementById('status-text').textContent='Error';console.error(e)}
-}
-
-async function refreshSnapshot(){
-  const btn=document.getElementById('refresh-btn');btn.disabled=true;btn.textContent='↻ Refreshing...';
-  try{
-    await api('/api/snapshot/refresh');
-    state.construction=await api('/api/roster-construction');
-    state.windows=await api('/api/contention-windows');
-    btn.textContent='✓ Done';
-    setTimeout(()=>{btn.textContent='↻ Refresh';btn.disabled=false},2000);
-    renderPage(document.querySelector('.nav-item.active').dataset.page);
-  }catch(e){btn.textContent='✗ Failed';btn.disabled=false;setTimeout(()=>{btn.textContent='↻ Refresh'},2000)}
-}
-
-function renderPage(page){
-  if(page==='standings')renderStandings();
-  if(page==='dashboard')renderDashboard();
-  if(page==='dynasty')renderDynasty();
-  if(page==='intel')renderIntel();
-  if(page==='values')renderValues();
-}
-
-function gradeClass(g){if(!g)return '';if(g.startsWith('A'))return 'badge-grade-a';if(g.startsWith('B'))return 'badge-grade-b';if(g.startsWith('C'))return 'badge-grade-c';return 'badge-grade-d'}
-function windowClass(w){if(w==='Contend Now')return 'badge-contend';if(w==='Transition')return 'badge-transition';return 'badge-rebuild'}
-function scoreColor(s){if(s>=70)return 'var(--green)';if(s>=55)return 'var(--blue)';if(s>=40)return 'var(--yellow)';return 'var(--red)'}
-function scoreBar(score,max=100,color=null){
-  const c=color||scoreColor(score),pct=Math.round((score/max)*100);
-  return `<div class="score-bar-wrap"><div class="score-bar"><div class="score-bar-fill" style="width:${pct}%;background:${c}"></div></div><div class="score-val">${typeof score==='number'?score.toFixed(1):score}</div></div>`
-}
-function trendHtml(t){
-  if(t>0)return `<span class="trend-up">▲ ${t}</span>`;
-  if(t<0)return `<span class="trend-dn">▼ ${Math.abs(t)}</span>`;
-  return `<span class="trend-flat">— 0</span>`;
-}
-function signalBadge(s){
-  const cls=s==='Strong Sell'?'badge-strong-sell':s==='Consider Selling'?'badge-consider':s==='Hold'?'badge-hold':'badge-buy';
-  return `<span class="badge ${cls}">${s}</span>`;
-}
-
-function renderStandings(){
-  if(!state.windows)return;
-  const rows=state.construction.map((c,i)=>{
-    const w=state.windows.find(x=>x.franchise_id===c.franchise_id);
-    return `<tr><td><span class="rank-num ${i<3?'top3':''}">${i+1}</span></td><td class="name">${c.franchise_name}</td><td class="num">0</td><td class="num">0</td><td class="num">0</td><td class="num">0.0</td><td class="num">0.0</td><td><span class="badge ${windowClass(w?.window||'Rebuild')}">${w?.window||'—'}</span></td><td><span class="badge ${gradeClass(c.grade)}">${c.grade}</span></td></tr>`;
-  }).join('');
-  document.getElementById('standings-table').innerHTML=`<table class="data-table"><thead><tr><th>#</th><th>Franchise</th><th class="num">W</th><th class="num">L</th><th class="num">T</th><th class="num">PF</th><th class="num">PA</th><th>Window</th><th>Grade</th></tr></thead><tbody class="fade-in">${rows}</tbody></table>`;
-}
-
-function renderDashboard(){
-  if(!state.construction||!state.windows)return;
-  const contendNow=state.windows.filter(w=>w.window==='Contend Now').length;
-  const avgScore=state.construction.reduce((s,c)=>s+c.total_score,0)/state.construction.length;
-  const top=state.construction[0];
-  document.getElementById('dashboard-kpis').innerHTML=`
-    <div class="kpi"><div class="kpi-label">Top Roster</div><div class="kpi-value" style="font-size:14px">${top.franchise_name}</div><div class="kpi-sub">${top.total_score.toFixed(1)}/100 · ${top.grade}</div></div>
-    <div class="kpi"><div class="kpi-label">Contend Now</div><div class="kpi-value accent">${contendNow}</div><div class="kpi-sub">of ${state.windows.length} teams</div></div>
-    <div class="kpi"><div class="kpi-label">League Avg Score</div><div class="kpi-value">${avgScore.toFixed(1)}</div><div class="kpi-sub">construction score</div></div>
-    <div class="kpi"><div class="kpi-label">FC Values</div><div class="kpi-value">${state.fcValues.length}</div><div class="kpi-sub">dynasty players tracked</div></div>`;
-  const rows=state.construction.map((c,i)=>{
-    const w=state.windows.find(x=>x.franchise_id===c.franchise_id);
-    return `<tr><td><span class="rank-num ${i<3?'top3':''}">${c.rank}</span></td><td class="name">${c.franchise_name}</td><td>${scoreBar(c.total_score)}</td><td><span class="badge ${gradeClass(c.grade)}">${c.grade}</span></td><td class="num">${c.wr.raw_score.toFixed(0)}</td><td class="num">${c.rb.raw_score.toFixed(0)}</td><td class="num">${c.qb.raw_score.toFixed(0)}</td><td class="num">${c.te.raw_score.toFixed(0)}</td><td class="num">${c.capital.raw_score.toFixed(0)}</td><td><span class="badge ${windowClass(w?.window||'Rebuild')}">${w?.window||'—'}</span></td></tr>`;
-  }).join('');
-  document.getElementById('construction-table').innerHTML=`<table class="data-table"><thead><tr><th>#</th><th>Franchise</th><th style="min-width:140px">Score</th><th>Grade</th><th class="num">WR</th><th class="num">RB</th><th class="num">QB</th><th class="num">TE</th><th class="num">CAP</th><th>Window</th></tr></thead><tbody class="fade-in">${rows}</tbody></table>`;
-}
-
-function renderDynasty(){
-  if(!state.windows)return;
-  document.getElementById('windows-chart').innerHTML='<div class="fade-in">'+state.windows.map(w=>{
-    const c=w.window==='Contend Now'?'var(--green)':w.window==='Transition'?'var(--yellow)':'var(--red)';
-    return `<div class="window-row"><div class="window-name">${w.franchise_name}</div><div class="window-bar-wrap">${scoreBar(w.window_score,100,c)}</div><span class="badge ${windowClass(w.window)}" style="min-width:90px;text-align:center">${w.window}</span><span class="muted mono" style="font-size:10px;min-width:50px;text-align:right">${w.young_core_count} u25</span></div>`;
-  }).join('')+'</div>';
-  document.getElementById('windows-detail').innerHTML=`<table class="data-table fade-in"><thead><tr><th>Franchise</th><th>Window</th><th class="num">Score</th><th class="num">QB Age</th><th class="num">RB Age</th><th class="num">WR Age</th><th class="num">TE Age</th><th class="num">Avg Age</th><th class="num accent">U25</th></tr></thead><tbody>${
-    state.windows.map(w=>`<tr><td class="name">${w.franchise_name}</td><td><span class="badge ${windowClass(w.window)}">${w.window}</span></td><td class="num">${w.window_score.toFixed(1)}</td><td class="num">${w.qb_curve.avg_age||'—'}</td><td class="num">${w.rb_curve.avg_age||'—'}</td><td class="num">${w.wr_curve.avg_age||'—'}</td><td class="num">${w.te_curve.avg_age||'—'}</td><td class="num">${w.roster_avg_age||'—'}</td><td class="num accent">${w.young_core_count}</td></tr>`).join('')
-  }</tbody></table>`;
-}
-
-async function loadFranchise(id){
-  if(!id){document.getElementById('franchise-detail').innerHTML='';return}
-  document.getElementById('franchise-detail').innerHTML='<div class="loading"><div class="spinner"></div>Loading...</div>';
-  try{
-    const f=await api('/api/franchise/'+id);
-    const c=f.construction,w=f.contention_window;
-    const posCards=['qb','rb','wr','te','capital'].map(pos=>{const g=c[pos];return `<div class="pos-card"><div class="pos-label">${g.position}</div><div class="pos-score">${g.raw_score.toFixed(0)}</div><div class="pos-grade"><span class="badge ${gradeClass(g.grade)}">${g.grade}</span></div></div>`}).join('');
-    const playerRows=f.roster.skill_players.map(p=>`<div class="player-row"><span class="player-pos pos-${p.position}">${p.position}</span><span class="player-name">${p.name}</span><span class="player-team">${p.nfl_team}</span><span class="player-age">${p.age?'age '+p.age:'—'}</span></div>`).join('');
-    document.getElementById('franchise-detail').innerHTML=`<div class="fade-in">
-      <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr)">
-        <div class="kpi"><div class="kpi-label">Construction Score</div><div class="kpi-value">${c.total_score}</div><div class="kpi-sub">${c.grade} · Rank #${c.rank}</div></div>
-        <div class="kpi"><div class="kpi-label">Contention Window</div><div class="kpi-value" style="font-size:15px">${w.window}</div><div class="kpi-sub">${w.window_score.toFixed(1)}/100</div></div>
-        <div class="kpi"><div class="kpi-label">Roster</div><div class="kpi-value">${f.roster.total_slots}</div><div class="kpi-sub">${f.young_core_count} under 25 · avg age ${f.avg_age||'—'}</div></div>
+  <!-- ══ DASHBOARD ══ -->
+  <div id="tab-dashboard" class="tab-content active">
+    <div class="grid-4" style="margin-bottom:16px" id="kpi-row">
+      <div class="kpi"><div class="kpi-label">League</div><div class="kpi-value" id="kpi-league">—</div><div class="kpi-sub">Dynasty · PPR</div></div>
+      <div class="kpi kpi-accent"><div class="kpi-label">Franchises</div><div class="kpi-value" id="kpi-franchises">—</div><div class="kpi-sub">14 teams</div></div>
+      <div class="kpi kpi-green"><div class="kpi-label">KTC Players</div><div class="kpi-value" id="kpi-ktc">—</div><div class="kpi-sub">Loaded</div></div>
+      <div class="kpi"><div class="kpi-label">Consensus</div><div class="kpi-value" id="kpi-consensus">—</div><div class="kpi-sub">FC + DP + KTC</div></div>
+    </div>
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">Power Rankings</div>
+        <div id="power-rankings-list"><div class="loading"><div class="spinner"></div>Loading...</div></div>
       </div>
-      <div class="card"><div class="card-title">Position Scores</div><div class="pos-grid">${posCards}</div>${c.strengths.length?`<div style="margin-top:8px;font-size:11px;color:var(--green)">✓ ${c.strengths.join(' · ')}</div>`:''}${c.weaknesses.length?`<div style="margin-top:4px;font-size:11px;color:var(--red)">⚠ ${c.weaknesses.join(' · ')}</div>`:''}</div>
-      <div class="card"><div class="card-title">📋 Roster (${f.roster.total_slots} players)</div><div class="player-list">${playerRows}</div></div>
-      <div class="card"><div class="card-title">Dynasty Outlook</div><div style="font-size:12px;color:var(--text2);line-height:1.7">${w.recommendation}</div><div style="margin-top:12px"><table class="data-table"><thead><tr><th>Position</th><th class="num">Avg Age</th><th class="num">In Peak</th><th class="num">Under 25</th><th class="num">Past Cliff</th></tr></thead><tbody>${['qb_curve','rb_curve','wr_curve','te_curve'].map(k=>{const g=w[k];return `<tr><td class="name">${g.position}</td><td class="num">${g.avg_age||'—'}</td><td class="num accent">${g.peak_count}</td><td class="num">${g.young_count}</td><td class="num" style="color:var(--red)">${g.aging_count}</td></tr>`}).join('')}</tbody></table></div></div>
-    </div>`;
-  }catch(e){document.getElementById('franchise-detail').innerHTML=`<div class="empty">Error: ${e.message}</div>`}
-}
+      <div class="card">
+        <div class="card-title">Contention Windows</div>
+        <div id="window-summary-list"><div class="loading"><div class="spinner"></div>Loading...</div></div>
+      </div>
+    </div>
+  </div>
 
-// ── Values page ──────────────────────────────────────────────────────────────
-let _valuesPos='';
+  <!-- ══ MATCHUP ══ -->
+  <div id="tab-matchup" class="tab-content">
+    <div class="section-header">
+      <div><div class="section-title">Week 1 Matchup</div><div class="section-sub">Your projected matchup</div></div>
+    </div>
+    <div class="empty">Matchup projections coming soon.</div>
+  </div>
 
-function renderValues(){
-  renderSellAll();
-  renderValuesTable(_valuesPos);
-}
+  <!-- ══ WAIVERS ══ -->
+  <div id="tab-waivers" class="tab-content">
+    <div class="section-header">
+      <div><div class="section-title">Waivers / Free Agents</div><div class="section-sub">Dynasty-weighted recommendations</div></div>
+      <div style="display:flex;gap:8px">
+        <select class="input" style="width:200px" id="waiver-franchise-select" onchange="loadWaivers()">
+          <option value="">Select franchise...</option>
+        </select>
+      </div>
+    </div>
+    <div id="waivers-content"><div class="empty">Select a franchise to see waiver recommendations.</div></div>
+  </div>
 
-function filterValues(pos){
-  _valuesPos=pos;
-  document.querySelectorAll('#pos-filters .filter-btn').forEach(b=>{
-    b.classList.toggle('active', b.textContent===(pos||'All'));
+  <!-- ══ TRADES ══ -->
+  <div id="tab-trades" class="tab-content">
+    <div class="section-header">
+      <div><div class="section-title">Trade Calculator</div>
+      <div class="section-sub">KTC + FantasyCalc + DynastyProcess consensus · 1QB · 0.5 PPR</div></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span style="font-size:11px;color:var(--muted)">Sources:</span>
+        <span class="pill pill-ktc">KTC</span>
+        <span class="pill pill-fc">FC</span>
+        <span class="pill pill-dp">DP</span>
+      </div>
+    </div>
+
+    <div class="trade-layout">
+      <!-- Side A -->
+      <div class="trade-side">
+        <div class="trade-side-header">
+          <div class="trade-side-title">🟢 You Receive</div>
+          <div class="trade-side-score" id="score-a">0.0</div>
+        </div>
+        <div class="trade-assets" id="assets-a"></div>
+        <div class="trade-add-row">
+          <div class="autocomplete-wrap">
+            <input class="input" id="search-a" placeholder="Add player..." autocomplete="off"
+                   oninput="onSearch('a')" onkeydown="onSearchKey(event,'a')">
+            <div class="autocomplete-results" id="ac-a" style="display:none"></div>
+          </div>
+          <select class="input" id="pick-select-a" style="width:160px">
+            <option value="">+ Add pick</option>
+          </select>
+          <button class="btn btn-secondary btn-sm" onclick="addPickFromSelect('a')">+</button>
+        </div>
+      </div>
+
+      <!-- VS -->
+      <div class="trade-vs">
+        <div class="trade-vs-label">VS</div>
+        <button class="btn btn-primary" onclick="evaluateTrade()" id="eval-btn">
+          Evaluate
+        </button>
+        <button class="btn btn-secondary btn-sm" onclick="clearTrade()" style="margin-top:4px">
+          Clear
+        </button>
+      </div>
+
+      <!-- Side B -->
+      <div class="trade-side">
+        <div class="trade-side-header">
+          <div class="trade-side-title">🔴 You Give</div>
+          <div class="trade-side-score" id="score-b">0.0</div>
+        </div>
+        <div class="trade-assets" id="assets-b"></div>
+        <div class="trade-add-row">
+          <div class="autocomplete-wrap">
+            <input class="input" id="search-b" placeholder="Add player..." autocomplete="off"
+                   oninput="onSearch('b')" onkeydown="onSearchKey(event,'b')">
+            <div class="autocomplete-results" id="ac-b" style="display:none"></div>
+          </div>
+          <select class="input" id="pick-select-b" style="width:160px">
+            <option value="">+ Add pick</option>
+          </select>
+          <button class="btn btn-secondary btn-sm" onclick="addPickFromSelect('b')">+</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Verdict -->
+    <div class="verdict-panel" id="verdict-panel" style="display:none">
+      <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:8px">
+        <div class="verdict-fairness" id="verdict-fairness">—</div>
+        <div style="font-size:12px;color:var(--muted)" id="verdict-winner"></div>
+      </div>
+      <div class="verdict-delta-bar">
+        <div class="verdict-delta-fill" id="verdict-bar" style="width:50%;background:var(--green)"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-bottom:10px">
+        <span id="verdict-score-a-label">You Receive: 0.0</span>
+        <span id="verdict-delta-label">Δ 0.0</span>
+        <span id="verdict-score-b-label">You Give: 0.0</span>
+      </div>
+      <div class="verdict-summary" id="verdict-summary"></div>
+      <div class="verdict-rec" id="verdict-rec"></div>
+      <div id="verdict-disputed" style="display:none" class="disputed-flag"></div>
+    </div>
+
+    <!-- Quick Values Reference -->
+    <div class="card" style="margin-top:16px">
+      <div class="card-title">Quick Pick Values (FC Consensus)</div>
+      <div id="pick-ref-table"><div class="loading"><div class="spinner"></div></div></div>
+    </div>
+  </div>
+
+  <!-- ══ VALUES ══ -->
+  <div id="tab-values" class="tab-content">
+    <div class="section-header">
+      <div><div class="section-title">Dynasty Player Values</div>
+      <div class="section-sub">3-source consensus: KTC (crowdsourced) · FantasyCalc · DynastyProcess</div></div>
+    </div>
+    <div class="values-filters">
+      <button class="filter-btn active" onclick="filterValues('ALL',this)">All</button>
+      <button class="filter-btn" onclick="filterValues('QB',this)">QB</button>
+      <button class="filter-btn" onclick="filterValues('RB',this)">RB</button>
+      <button class="filter-btn" onclick="filterValues('WR',this)">WR</button>
+      <button class="filter-btn" onclick="filterValues('TE',this)">TE</button>
+      <div class="search-input-wrap" style="max-width:220px">
+        <span class="search-icon">⌕</span>
+        <input class="input" id="values-search" placeholder="Search player..."
+               style="padding-left:28px" oninput="renderValuesTable()">
+      </div>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="max-height:600px;overflow-y:auto">
+        <table class="data-table" id="values-table">
+          <thead style="position:sticky;top:0;background:var(--bg2)">
+            <tr>
+              <th>Rank</th><th>Player</th><th>Pos</th><th>Team</th><th>Age</th>
+              <th>KTC</th><th>FC</th><th>DP</th><th>Consensus</th><th>Sources</th><th>Signal</th>
+            </tr>
+          </thead>
+          <tbody id="values-tbody">
+            <tr><td colspan="11"><div class="loading"><div class="spinner"></div>Loading...</div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ CONTENTION WINDOWS ══ -->
+  <div id="tab-windows" class="tab-content">
+    <div class="section-header">
+      <div><div class="section-title">Contention Windows</div><div class="section-sub">Dynasty age curve · roster construction analysis</div></div>
+    </div>
+    <div id="windows-content"><div class="loading"><div class="spinner"></div>Loading...</div></div>
+  </div>
+
+  <!-- ══ CONSTRUCTION ══ -->
+  <div id="tab-construction" class="tab-content">
+    <div class="section-header">
+      <div><div class="section-title">Roster Construction</div><div class="section-sub">Position group grades</div></div>
+    </div>
+    <div id="construction-content"><div class="loading"><div class="spinner"></div>Loading...</div></div>
+  </div>
+
+  <!-- ══ STANDINGS ══ -->
+  <div id="tab-standings" class="tab-content">
+    <div class="section-header">
+      <div><div class="section-title">Standings</div><div class="section-sub">2026 Season</div></div>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <table class="data-table" id="standings-table">
+        <thead><tr><th>#</th><th>Franchise</th><th>W</th><th>L</th><th>T</th><th>PF</th><th>PA</th><th>Streak</th></tr></thead>
+        <tbody id="standings-tbody"><tr><td colspan="8"><div class="loading"><div class="spinner"></div></div></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ══ SELL HIGH ══ -->
+  <div id="tab-sellhigh" class="tab-content">
+    <div class="section-header">
+      <div><div class="section-title">Sell High Signals</div><div class="section-sub">Players at peak dynasty value · based on KTC trend data</div></div>
+      <select class="input" style="width:200px" id="sell-franchise-select" onchange="loadSellHigh()">
+        <option value="">All franchises</option>
+      </select>
+    </div>
+    <div id="sellhigh-content"><div class="loading"><div class="spinner"></div>Loading...</div></div>
+  </div>
+
+</div><!-- /#main -->
+
+<script>
+const API = '';
+let state = {
+  health: null, snapshot: null,
+  consensus: [], consensusMap: {},
+  picks: [],
+  windows: [], construction: [],
+  standings: [],
+  tradeA: [], tradeB: [],
+  valuesFilter: 'ALL',
+  franchises: [],
+};
+
+// ── NAV ──
+function showTab(name) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => {
+    if (n.getAttribute('onclick')?.includes("'" + name + "'")) n.classList.add('active');
   });
-  renderValuesTable(pos);
+  const titles = {
+    dashboard:'Dashboard', matchup:'Matchup', waivers:'Waivers / FA',
+    trades:'Trade Calculator', values:'Player Values', windows:'Contention Windows',
+    construction:'Roster Construction', standings:'Standings', sellhigh:'Sell High'
+  };
+  document.getElementById('topbar-title').textContent = titles[name] || name;
+  if (name === 'values' && state.consensus.length === 0) loadConsensus();
+  if (name === 'windows' && state.windows.length === 0) loadWindows();
+  if (name === 'construction' && state.construction.length === 0) loadConstruction();
+  if (name === 'standings' && state.standings.length === 0) loadStandings();
+  if (name === 'sellhigh') loadSellHigh();
+  if (name === 'trades' && state.picks.length === 0) loadPicks();
 }
 
-function renderValuesTable(pos){
-  const players=pos?state.fcValues.filter(p=>p.position===pos):state.fcValues;
-  const rows=players.slice(0,100).map(p=>{
-    const age=p.age?p.age.toFixed(1):'?';
+// ── API ──
+async function apiFetch(path) {
+  const r = await fetch(API + path);
+  if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+  return r.json();
+}
+
+// ── INIT ──
+async function init() {
+  try {
+    state.health = await apiFetch('/health');
+    document.getElementById('kpi-league').textContent = state.health.league?.split(' ')[0] || '—';
+    document.getElementById('kpi-franchises').textContent = state.health.franchises || '—';
+    document.getElementById('kpi-ktc').textContent = state.health.ktc_players || '—';
+    document.getElementById('kpi-consensus').textContent = state.health.consensus_players || '—';
+    document.getElementById('topbar-badge').textContent = 'Week ' + (state.health.week || '1');
+    document.getElementById('status-text').textContent = 'Live · ' + state.health.league;
+
+    await Promise.all([loadConsensus(), loadWindows(), loadConstruction(), loadStandings()]);
+    renderDashboard();
+    populateFranchiseSelects();
+  } catch(e) {
+    document.getElementById('status-text').textContent = 'Error: ' + e.message;
+    console.error(e);
+  }
+}
+
+async function refreshSnapshot() {
+  try {
+    document.getElementById('status-text').textContent = 'Refreshing...';
+    await apiFetch('/api/snapshot/refresh');
+    await init();
+  } catch(e) { console.error(e); }
+}
+
+// ── CONSENSUS ──
+async function loadConsensus() {
+  try {
+    const data = await apiFetch('/api/consensus?limit=300');
+    state.consensus = data;
+    state.consensusMap = {};
+    data.forEach(p => { state.consensusMap[p.mfl_id] = p; });
+    renderValuesTable();
+  } catch(e) { console.error('consensus:', e); }
+}
+
+// ── PICKS ──
+async function loadPicks() {
+  try {
+    state.picks = await apiFetch('/api/picks');
+    populatePickSelects();
+    renderPickRefTable();
+  } catch(e) { console.error('picks:', e); }
+}
+
+function populatePickSelects() {
+  ['a','b'].forEach(side => {
+    const sel = document.getElementById('pick-select-' + side);
+    sel.innerHTML = '<option value="">+ Add pick</option>';
+    state.picks.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = JSON.stringify({label: p.label, mfl_id: p.mfl_id, score: p.consensus_score});
+      opt.textContent = p.label + ' (' + p.consensus_score.toFixed(1) + ')';
+      sel.appendChild(opt);
+    });
+  });
+}
+
+function renderPickRefTable() {
+  const el = document.getElementById('pick-ref-table');
+  const rows = state.picks.filter(p => p.consensus_score > 0).slice(0, 30)
+    .map(p => `<tr>
+      <td class="name">${p.label}</td>
+      <td><span class="pos-badge pos-PI">PICK</span></td>
+      <td>${renderValBar(p.consensus_score)}</td>
+      <td style="font-size:11px;color:var(--muted)">${p.mfl_id}</td>
+    </tr>`).join('');
+  el.innerHTML = `<table class="data-table"><thead><tr>
+    <th>Pick</th><th>Type</th><th>Value</th><th>ID</th>
+  </tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+// ── VALUES TABLE ──
+let valuesFilterPos = 'ALL';
+function filterValues(pos, btn) {
+  valuesFilterPos = pos;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderValuesTable();
+}
+
+function renderValuesTable() {
+  const q = (document.getElementById('values-search')?.value || '').toLowerCase();
+  let players = state.consensus;
+  if (valuesFilterPos !== 'ALL') players = players.filter(p => p.position === valuesFilterPos);
+  if (q) players = players.filter(p => p.name.toLowerCase().includes(q));
+  players = players.slice(0, 200);
+
+  const tbody = document.getElementById('values-tbody');
+  if (!tbody) return;
+  if (players.length === 0) { tbody.innerHTML = '<tr><td colspan="11"><div class="empty">No players found.</div></td></tr>'; return; }
+
+  tbody.innerHTML = players.map((p, i) => {
+    const pos = p.position || '?';
+    const trendKtc = p.ktc_norm !== null && p.ktc_norm !== undefined
+      ? `<span class="pill pill-ktc">${p.ktc_norm?.toFixed(0) || '—'}</span>` : '<span style="color:var(--muted)">—</span>';
+    const trendFc = p.fc_norm !== null && p.fc_norm !== undefined
+      ? `<span class="pill pill-fc">${p.fc_norm?.toFixed(0) || '—'}</span>` : '<span style="color:var(--muted)">—</span>';
+    const trendDp = p.dp_norm !== null && p.dp_norm !== undefined
+      ? `<span class="pill pill-dp">${p.dp_norm?.toFixed(0) || '—'}</span>` : '<span style="color:var(--muted)">—</span>';
+
+    const signal = p.is_disputed
+      ? `<span class="tag tag-disputed">⚠ ${p.value_signal}</span>`
+      : p.value_signal !== 'Consensus'
+        ? `<span class="tag tag-${p.value_signal.toLowerCase().replace(' ','-')}">${p.value_signal}</span>`
+        : `<span style="color:var(--muted);font-size:10px">—</span>`;
+
     return `<tr>
-      <td class="num">${p.overall_rank}</td>
+      <td class="rank">${p.consensus_rank || i+1}</td>
       <td class="name">${p.name}</td>
-      <td><span class="player-pos pos-${p.position}" style="width:auto;padding:2px 6px">${p.position}</span></td>
-      <td class="muted">${p.nfl_team}</td>
-      <td class="num">${age}</td>
-      <td class="num accent">${p.value.toLocaleString()}</td>
-      <td class="num">${trendHtml(p.trend_30d)}</td>
-      <td class="num muted">${p.redraft_value.toLocaleString()}</td>
-      <td class="num">${p.tier||'—'}</td>
+      <td><span class="pos-badge pos-${pos}">${pos}</span></td>
+      <td style="color:var(--muted)">${p.nfl_team || '—'}</td>
+      <td style="color:var(--muted)">${p.age?.toFixed(1) || '—'}</td>
+      <td>${trendKtc}</td>
+      <td>${trendFc}</td>
+      <td>${trendDp}</td>
+      <td>${renderValBar(p.consensus_score)}</td>
+      <td style="color:var(--muted);font-size:10px">${p.sources}/3</td>
+      <td>${signal}</td>
     </tr>`;
   }).join('');
-  document.getElementById('values-table').innerHTML=`
-    <table class="data-table fade-in">
-      <thead><tr>
-        <th class="num">#</th><th>Player</th><th>Pos</th><th>Team</th>
-        <th class="num">Age</th><th class="num accent">Value</th>
-        <th class="num">30d</th><th class="num">Redraft</th><th class="num">Tier</th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>`;
 }
 
-function renderSellAll(){
-  if(!state.sellReports.length){document.getElementById('sell-all-table').innerHTML='<div class="empty">No sell-high data.</div>';return}
-  const rows=[];
-  for(const r of state.sellReports){
-    for(const s of [...r.strong_sells,...r.consider_sells]){
-      rows.push({franchise:r.franchise_name,...s});
-    }
-  }
-  rows.sort((a,b)=>b.sell_score-a.sell_score);
-  if(!rows.length){document.getElementById('sell-all-table').innerHTML='<div class="empty muted" style="padding:20px;font-size:11px">No strong sell signals league-wide. Check back during the season.</div>';return}
-  const tableRows=rows.slice(0,20).map(s=>`<tr>
-    <td class="name">${s.name}</td>
-    <td><span class="player-pos pos-${s.position}">${s.position}</span></td>
-    <td class="muted">${s.franchise}</td>
-    <td class="num">${s.age?s.age.toFixed(1):'?'}</td>
-    <td class="num accent">${s.fc_value.toLocaleString()}</td>
-    <td class="num">${trendHtml(s.trend_30d)}</td>
-    <td class="num">${s.sell_score.toFixed(0)}</td>
-    <td>${signalBadge(s.sell_signal)}</td>
-    <td class="muted" style="font-size:10px;max-width:200px">${s.reasons[0]||''}</td>
+function renderValBar(score) {
+  return `<div class="val-bar-wrap">
+    <div class="val-bar-track"><div class="val-bar-fill" style="width:${score}%"></div></div>
+    <span class="val-num">${score.toFixed(1)}</span>
+  </div>`;
+}
+
+// ── STANDINGS ──
+async function loadStandings() {
+  try {
+    const data = await apiFetch('/api/standings');
+    state.standings = data;
+    renderStandings();
+  } catch(e) { console.error('standings:', e); }
+}
+
+function renderStandings() {
+  const tbody = document.getElementById('standings-tbody');
+  if (!tbody || !state.standings.length) return;
+  tbody.innerHTML = state.standings.map((t, i) => `<tr>
+    <td class="rank">${i+1}</td>
+    <td class="name">${t.franchise_name || t.name || '—'}</td>
+    <td style="color:var(--green)">${t.wins ?? t.h2h_wins ?? '—'}</td>
+    <td style="color:var(--red)">${t.losses ?? t.h2h_losses ?? '—'}</td>
+    <td style="color:var(--muted)">${t.ties ?? 0}</td>
+    <td>${t.points_for?.toFixed(1) ?? '—'}</td>
+    <td style="color:var(--muted)">${t.points_against?.toFixed(1) ?? '—'}</td>
+    <td style="color:var(--muted)">—</td>
   </tr>`).join('');
-  document.getElementById('sell-all-table').innerHTML=`
-    <table class="data-table fade-in">
+}
+
+// ── WINDOWS ──
+async function loadWindows() {
+  try {
+    state.windows = await apiFetch('/api/contention-windows');
+    renderWindows();
+  } catch(e) { console.error('windows:', e); }
+}
+
+function renderWindows() {
+  const el = document.getElementById('windows-content');
+  if (!el || !state.windows.length) return;
+  const sorted = [...state.windows].sort((a,b) => b.window_score - a.window_score);
+  el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px">
+    ${sorted.map(w => `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:10px">
+          <div>
+            <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:14px">${w.franchise_name}</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">Avg age: ${w.roster_avg_age?.toFixed(1) || '—'} · ${w.peak_player_count} peak players</div>
+          </div>
+          <span class="window-badge window-${w.window}">${w.window}</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+          ${['QB','RB','WR','TE'].map(pos => {
+            const g = w[pos.toLowerCase() + '_curve'];
+            if (!g) return '';
+            return `<div style="background:var(--bg3);border-radius:5px;padding:6px 8px">
+              <div style="font-size:9px;color:var(--muted)">${pos}</div>
+              <div style="font-size:12px;font-weight:600">${g.avg_age?.toFixed(1) || '—'}</div>
+              <div style="font-size:9px;color:var(--muted)">${g.peak_count}pk ${g.young_count}yg</div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div style="font-size:11px;color:var(--muted);line-height:1.5">${w.recommendation}</div>
+      </div>`).join('')}
+  </div>`;
+
+  // Also update window summary in dashboard
+  const wsum = document.getElementById('window-summary-list');
+  if (wsum) {
+    wsum.innerHTML = `<table class="data-table">${sorted.slice(0,14).map((w,i) => `<tr>
+      <td class="rank">${i+1}</td>
+      <td class="name">${w.franchise_name}</td>
+      <td><span class="window-badge window-${w.window}">${w.window}</span></td>
+      <td style="color:var(--muted)">${w.window_score.toFixed(1)}</td>
+    </tr>`).join('')}</table>`;
+  }
+}
+
+// ── CONSTRUCTION ──
+async function loadConstruction() {
+  try {
+    state.construction = await apiFetch('/api/roster-construction');
+    renderConstruction();
+  } catch(e) { console.error('construction:', e); }
+}
+
+function renderConstruction() {
+  const el = document.getElementById('construction-content');
+  if (!el || !state.construction.length) return;
+  const sorted = [...state.construction].sort((a,b) => a.rank - b.rank);
+
+  el.innerHTML = `<div class="card" style="padding:0;overflow:hidden">
+    <table class="data-table">
       <thead><tr>
-        <th>Player</th><th>Pos</th><th>Franchise</th>
-        <th class="num">Age</th><th class="num accent">Value</th>
-        <th class="num">30d</th><th class="num">Score</th><th>Signal</th><th>Reason</th>
+        <th>#</th><th>Franchise</th><th>Grade</th>
+        <th>QB</th><th>RB</th><th>WR</th><th>TE</th><th>Capital</th>
+        <th>Score</th><th>Notes</th>
       </tr></thead>
-      <tbody>${tableRows}</tbody>
-    </table>`;
+      <tbody>${sorted.map(s => {
+        const g = s.grade?.[0] || 'C';
+        return `<tr>
+          <td class="rank">${s.rank}</td>
+          <td class="name">${s.franchise_name}</td>
+          <td><span class="grade grade-${g}">${s.grade}</span></td>
+          ${['qb','rb','wr','te','capital'].map(pos => {
+            const pg = s[pos];
+            if (!pg) return '<td>—</td>';
+            return `<td><span class="grade grade-${pg.grade?.[0]||'C'}" style="font-size:14px">${pg.grade}</span></td>`;
+          }).join('')}
+          <td>${renderValBar(s.total_score)}</td>
+          <td style="font-size:10px;color:var(--muted);max-width:200px">${s.summary?.slice(0,60) || ''}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>
+  </div>`;
+
+  // Also update power rankings in dashboard
+  const pr = document.getElementById('power-rankings-list');
+  if (pr) {
+    pr.innerHTML = `<table class="data-table">${sorted.slice(0,14).map(s => {
+      const g = s.grade?.[0] || 'C';
+      return `<tr>
+        <td class="rank">${s.rank}</td>
+        <td class="name">${s.franchise_name}</td>
+        <td><span class="grade grade-${g}" style="font-size:14px">${s.grade}</span></td>
+        <td>${renderValBar(s.total_score)}</td>
+      </tr>`;
+    }).join('')}</table>`;
+  }
 }
 
-async function loadSellHigh(id){
-  if(!id){document.getElementById('sell-detail').innerHTML='';return}
-  document.getElementById('sell-detail').innerHTML='<div class="loading"><div class="spinner"></div>Loading...</div>';
-  try{
-    const report=await api('/api/sell-high/'+id);
-    const rows=report.signals.map(s=>`<tr>
-      <td class="name">${s.name}</td>
-      <td><span class="player-pos pos-${s.position}">${s.position}</span></td>
-      <td class="muted">${s.nfl_team}</td>
-      <td class="num">${s.age?s.age.toFixed(1):'?'}</td>
-      <td class="num accent">${s.fc_value.toLocaleString()}</td>
-      <td class="num">${trendHtml(s.trend_30d)}</td>
-      <td class="num">${s.sell_score.toFixed(0)}</td>
-      <td>${signalBadge(s.sell_signal)}</td>
-      <td class="muted" style="font-size:10px;max-width:180px">${s.reasons[0]||''}</td>
-    </tr>`).join('');
-    document.getElementById('sell-detail').innerHTML=`
-      <p style="font-size:11px;color:var(--text3);margin-bottom:12px">${report.summary}</p>
-      <table class="data-table fade-in">
-        <thead><tr>
-          <th>Player</th><th>Pos</th><th>Team</th>
-          <th class="num">Age</th><th class="num accent">Value</th>
-          <th class="num">30d</th><th class="num">Score</th><th>Signal</th><th>Reason</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>`;
-  }catch(e){document.getElementById('sell-detail').innerHTML=`<div class="empty">Error: ${e.message}</div>`}
+// ── DASHBOARD ──
+function renderDashboard() {
+  if (state.construction.length) renderConstruction();
+  if (state.windows.length) renderWindows();
 }
 
-async function loadWaivers(id){
-  if(!id){document.getElementById('waiver-detail').innerHTML='';return}
-  document.getElementById('waiver-detail').innerHTML='<div class="loading"><div class="spinner"></div>Loading...</div>';
-  try{
-    const report=await api('/api/waivers/'+id);
-    const needRows=Object.values(report.needs).sort((a,b)=>b.need_score-a.need_score).map(n=>{
-      const c=n.need_score>=70?'var(--red)':n.need_score>=50?'var(--yellow)':'var(--green)';
-      const note=n.notes.length?n.notes[0]:`${n.current_count}/${n.target_count} rostered`;
-      return `<div class="need-bar-row"><div class="need-pos-label">${n.position}</div><div style="flex:1">${scoreBar(n.need_score,100,c)}</div><div class="need-meta">${note}</div></div>`;
+// ── FRANCHISE SELECTS ──
+function populateFranchiseSelects() {
+  const ids = Object.keys(state.windows.reduce((acc,w) => {
+    acc[w.franchise_id] = w.franchise_name; return acc;
+  }, {}));
+  // Use construction for franchise list
+  const franchises = state.construction.map(s => ({id: s.franchise_id, name: s.franchise_name}));
+  state.franchises = franchises;
+
+  ['waiver-franchise-select','sell-franchise-select'].forEach(selId => {
+    const sel = document.getElementById(selId);
+    if (!sel) return;
+    franchises.forEach(f => {
+      const opt = document.createElement('option');
+      opt.value = f.id;
+      opt.textContent = f.name;
+      sel.appendChild(opt);
+    });
+  });
+}
+
+// ── WAIVERS ──
+async function loadWaivers() {
+  const fid = document.getElementById('waiver-franchise-select').value;
+  const el = document.getElementById('waivers-content');
+  if (!fid) { el.innerHTML = '<div class="empty">Select a franchise.</div>'; return; }
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await apiFetch('/api/waivers/' + fid);
+    const adds = data.top_adds || [];
+    el.innerHTML = `
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-title">Roster Needs</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${Object.entries(data.needs || {}).map(([pos, n]) => `
+            <div style="background:var(--bg3);border-radius:6px;padding:8px 12px;border:1px solid var(--border)">
+              <div style="font-size:9px;color:var(--muted)">${pos}</div>
+              <div style="font-size:16px;font-weight:700;color:${n.need_score > 60 ? 'var(--red)' : n.need_score > 30 ? 'var(--yellow)' : 'var(--green)'}">${n.need_score.toFixed(0)}</div>
+              <div style="font-size:9px;color:var(--muted)">${n.current_count}/${n.target_count}</div>
+            </div>`).join('')}
+        </div>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden">
+        <table class="data-table">
+          <thead><tr><th>#</th><th>Player</th><th>Pos</th><th>Team</th><th>Age</th><th>Dynasty Score</th><th>Need Score</th><th>Reason</th></tr></thead>
+          <tbody>${adds.map((r,i) => `<tr>
+            <td class="rank">${i+1}</td>
+            <td class="name">${r.name}</td>
+            <td><span class="pos-badge pos-${r.position}">${r.position}</span></td>
+            <td style="color:var(--muted)">${r.nfl_team}</td>
+            <td style="color:var(--muted)">${r.age || '—'}</td>
+            <td>${renderValBar(r.dynasty_score)}</td>
+            <td>${renderValBar(r.need_score)}</td>
+            <td style="font-size:10px;color:var(--muted)">${r.reason}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>`;
+  } catch(e) { el.innerHTML = `<div class="empty">Error: ${e.message}</div>`; }
+}
+
+// ── SELL HIGH ──
+async function loadSellHigh() {
+  const fid = document.getElementById('sell-franchise-select')?.value;
+  const el = document.getElementById('sellhigh-content');
+  if (!el) return;
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+  try {
+    const url = fid ? '/api/sell-high/' + fid : '/api/sell-high';
+    const data = await apiFetch(url);
+    const reports = Array.isArray(data) ? data : [data];
+    el.innerHTML = reports.map(r => {
+      if (!r.signals?.length) return `<div class="card" style="margin-bottom:10px"><b>${r.franchise_name}</b> — No signals</div>`;
+      return `<div class="card" style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <div style="font-family:'Syne',sans-serif;font-weight:700">${r.franchise_name}</div>
+          <div style="font-size:10px;color:var(--muted)">${r.strong_sells?.length || 0} strong · ${r.consider_sells?.length || 0} consider</div>
+        </div>
+        <table class="data-table">
+          <thead><tr><th>Player</th><th>Pos</th><th>Age</th><th>KTC Value</th><th>Trend</th><th>Signal</th></tr></thead>
+          <tbody>${r.signals.slice(0,10).map(s => {
+            const trendColor = s.trend_30d > 0 ? 'var(--green)' : s.trend_30d < 0 ? 'var(--red)' : 'var(--muted)';
+            const trendStr = s.trend_30d > 0 ? `+${s.trend_30d}` : s.trend_30d;
+            return `<tr>
+              <td class="name">${s.name}</td>
+              <td><span class="pos-badge pos-${s.position}">${s.position}</span></td>
+              <td style="color:var(--muted)">${s.age?.toFixed(1) || '—'}</td>
+              <td>${renderValBar(s.sell_score)}</td>
+              <td style="color:${trendColor}">${trendStr}</td>
+              <td><span class="tag ${s.sell_signal === 'STRONG_SELL' ? 'tag-disputed' : 'tag-ktc-high'}">${s.sell_signal}</span></td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table>
+      </div>`;
     }).join('');
-    const hasAdds=report.top_adds.length>0;
-    const topAddsHtml=hasAdds
-      ?report.top_adds.map(r=>`<div class="waiver-rec-row"><div class="waiver-rank">#${r.rank}</div><span class="player-pos pos-${r.position}" style="width:32px">${r.position}</span><div class="waiver-name">${r.name}</div><div class="player-team" style="min-width:36px">${r.nfl_team}</div><div class="player-age" style="min-width:50px">age ${r.age||'?'}</div><div class="waiver-reason">${r.reason}</div><div style="font-size:11px;min-width:40px;text-align:right" class="accent">${r.combined_score.toFixed(0)}</div></div>`).join('')
-      :`<div class="preseason-notice">⏳ No free agents available yet — MFL waiver wire opens closer to the season.</div>`;
-    document.getElementById('waiver-detail').innerHTML=`<div class="fade-in">
-      <div class="card"><div class="card-title">📌 Roster Needs</div><p style="font-size:11px;color:var(--text3);margin-bottom:12px">${report.summary}</p>${needRows}</div>
-      <div class="card"><div class="card-title">⭐ Top Adds</div>${topAddsHtml}</div>
+  } catch(e) { el.innerHTML = `<div class="empty">Error: ${e.message}</div>`; }
+}
+
+// ── TRADE CALCULATOR ──
+let searchTimer = {};
+let searchResults = {};
+
+function onSearch(side) {
+  const q = document.getElementById('search-' + side).value;
+  clearTimeout(searchTimer[side]);
+  if (q.length < 2) { hideAC(side); return; }
+  searchTimer[side] = setTimeout(() => doSearch(side, q), 200);
+}
+
+async function doSearch(side, q) {
+  try {
+    const results = await apiFetch('/api/consensus/search?q=' + encodeURIComponent(q) + '&limit=8');
+    searchResults[side] = results;
+    showAC(side, results);
+  } catch(e) { hideAC(side); }
+}
+
+function showAC(side, players) {
+  const el = document.getElementById('ac-' + side);
+  if (!players.length) { el.style.display = 'none'; return; }
+  el.innerHTML = players.map((p,i) => {
+    const pos = p.position || '?';
+    return `<div class="ac-item" onclick="addPlayerToSide('${side}', ${JSON.stringify(p).replace(/"/g,'&quot;')})">
+      <span class="pos-badge pos-${pos}">${pos}</span>
+      <span class="ac-name">${p.name}</span>
+      <span class="ac-meta">${p.nfl_team} · ${p.age?.toFixed(1) || '—'}</span>
+      <span class="ac-val">${p.consensus_score.toFixed(1)}</span>
     </div>`;
-  }catch(e){document.getElementById('waiver-detail').innerHTML=`<div class="empty">Error: ${e.message}</div>`}
+  }).join('');
+  el.style.display = 'block';
 }
 
-function renderIntel(){
-  if(!state.construction||!state.windows)return;
-  const ageData=state.windows.filter(w=>w.roster_avg_age).sort((a,b)=>a.roster_avg_age-b.roster_avg_age);
-  document.getElementById('age-map').innerHTML=`<table class="data-table fade-in"><thead><tr><th>Franchise</th><th style="min-width:140px">Avg Age</th><th class="num">QB</th><th class="num">RB</th><th class="num">WR</th><th class="num">TE</th><th class="num accent">U25</th><th>Window</th></tr></thead><tbody>${
-    ageData.map(w=>{const c=w.roster_avg_age<25?'var(--green)':w.roster_avg_age<27?'var(--blue)':w.roster_avg_age<29?'var(--yellow)':'var(--red)';return `<tr><td class="name">${w.franchise_name}</td><td>${scoreBar(w.roster_avg_age,35,c)}</td><td class="num">${w.qb_curve.avg_age||'—'}</td><td class="num">${w.rb_curve.avg_age||'—'}</td><td class="num">${w.wr_curve.avg_age||'—'}</td><td class="num">${w.te_curve.avg_age||'—'}</td><td class="num accent">${w.young_core_count}</td><td><span class="badge ${windowClass(w.window)}">${w.window}</span></td></tr>`}).join('')
-  }</tbody></table>`;
-  document.getElementById('intel-construction').innerHTML=`<table class="data-table fade-in"><thead><tr><th>#</th><th>Franchise</th><th class="num">WR</th><th class="num">RB</th><th class="num">QB</th><th class="num">TE</th><th class="num">CAP</th><th style="min-width:140px">Total</th><th>Grade</th></tr></thead><tbody>${
-    state.construction.map((c,i)=>`<tr><td><span class="rank-num ${i<3?'top3':''}">${c.rank}</span></td><td class="name">${c.franchise_name}</td><td class="num">${c.wr.raw_score.toFixed(0)}</td><td class="num">${c.rb.raw_score.toFixed(0)}</td><td class="num">${c.qb.raw_score.toFixed(0)}</td><td class="num">${c.te.raw_score.toFixed(0)}</td><td class="num">${c.capital.raw_score.toFixed(0)}</td><td>${scoreBar(c.total_score)}</td><td><span class="badge ${gradeClass(c.grade)}">${c.grade}</span></td></tr>`).join('')
-  }</tbody></table>`;
+function hideAC(side) {
+  const el = document.getElementById('ac-' + side);
+  if (el) el.style.display = 'none';
 }
 
-boot();
+function onSearchKey(e, side) {
+  if (e.key === 'Escape') hideAC(side);
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.autocomplete-wrap')) {
+    hideAC('a'); hideAC('b');
+  }
+});
+
+function addPlayerToSide(side, player) {
+  const list = side === 'a' ? state.tradeA : state.tradeB;
+  if (list.find(x => x.mfl_id === player.mfl_id)) { hideAC(side); return; }
+  list.push({
+    asset_type: 'player',
+    label: player.name,
+    mfl_id: player.mfl_id,
+    position: player.position,
+    nfl_team: player.nfl_team,
+    consensus_score: player.consensus_score,
+    fc_score: player.fc_norm,
+    dp_score: player.dp_norm,
+    ktc_score: player.ktc_norm,
+  });
+  hideAC(side);
+  document.getElementById('search-' + side).value = '';
+  renderTradeAssets(side);
+}
+
+function addPickFromSelect(side) {
+  const sel = document.getElementById('pick-select-' + side);
+  if (!sel.value) return;
+  const pick = JSON.parse(sel.value);
+  const list = side === 'a' ? state.tradeA : state.tradeB;
+  if (list.find(x => x.mfl_id === pick.mfl_id)) { sel.value = ''; return; }
+  list.push({
+    asset_type: 'pick',
+    label: pick.label,
+    mfl_id: pick.mfl_id,
+    consensus_score: pick.score,
+    position: 'PI',
+  });
+  sel.value = '';
+  renderTradeAssets(side);
+}
+
+function removeAsset(side, idx) {
+  if (side === 'a') state.tradeA.splice(idx, 1);
+  else state.tradeB.splice(idx, 1);
+  renderTradeAssets(side);
+  clearVerdict();
+}
+
+function renderTradeAssets(side) {
+  const list = side === 'a' ? state.tradeA : state.tradeB;
+  const el = document.getElementById('assets-' + side);
+  const total = list.reduce((s, a) => s + (a.consensus_score || 0), 0);
+  document.getElementById('score-' + side).textContent = total.toFixed(1);
+
+  el.innerHTML = list.map((a, i) => {
+    const pos = a.position || (a.asset_type === 'pick' ? 'PI' : '?');
+    const sources = [
+      a.ktc_score != null ? `<span class="pill pill-ktc">${a.ktc_score?.toFixed(0)}</span>` : '',
+      a.fc_score != null ? `<span class="pill pill-fc">${a.fc_score?.toFixed(0)}</span>` : '',
+      a.dp_score != null ? `<span class="pill pill-dp">${a.dp_score?.toFixed(0)}</span>` : '',
+    ].filter(Boolean).join('');
+    return `<div class="trade-asset">
+      <span class="pos-badge pos-${pos}">${pos}</span>
+      <div style="flex:1">
+        <div class="trade-asset-name">${a.label}</div>
+        <div class="source-pills" style="margin-top:3px">${sources}</div>
+      </div>
+      <span class="trade-asset-val">${(a.consensus_score||0).toFixed(1)}</span>
+      <span class="trade-asset-remove" onclick="removeAsset('${side}', ${i})">✕</span>
+    </div>`;
+  }).join('');
+}
+
+function clearVerdict() {
+  document.getElementById('verdict-panel').style.display = 'none';
+}
+
+function clearTrade() {
+  state.tradeA = []; state.tradeB = [];
+  ['a','b'].forEach(s => {
+    renderTradeAssets(s);
+    document.getElementById('score-' + s).textContent = '0.0';
+  });
+  clearVerdict();
+}
+
+async function evaluateTrade() {
+  if (!state.tradeA.length && !state.tradeB.length) return;
+  const btn = document.getElementById('eval-btn');
+  btn.textContent = '...';
+  btn.disabled = true;
+  try {
+    const payload = {
+      side_a: state.tradeA.map(a => ({asset_type: a.asset_type, label: a.label, mfl_id: a.mfl_id})),
+      side_b: state.tradeB.map(a => ({asset_type: a.asset_type, label: a.label, mfl_id: a.mfl_id})),
+    };
+    const v = await fetch(API + '/api/trade/evaluate', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    }).then(r => r.json());
+
+    // Update scores from server (authoritative)
+    document.getElementById('score-a').textContent = v.side_a.total_score.toFixed(1);
+    document.getElementById('score-b').textContent = v.side_b.total_score.toFixed(1);
+
+    // Update asset scores
+    v.side_a.assets.forEach((a, i) => {
+      if (state.tradeA[i]) {
+        state.tradeA[i].consensus_score = a.consensus_score;
+        state.tradeA[i].fc_score = a.fc_score;
+        state.tradeA[i].dp_score = a.dp_score;
+      }
+    });
+    v.side_b.assets.forEach((a, i) => {
+      if (state.tradeB[i]) {
+        state.tradeB[i].consensus_score = a.consensus_score;
+        state.tradeB[i].fc_score = a.fc_score;
+        state.tradeB[i].dp_score = a.dp_score;
+      }
+    });
+    renderTradeAssets('a'); renderTradeAssets('b');
+
+    renderVerdict(v);
+  } catch(e) {
+    console.error(e);
+  } finally {
+    btn.textContent = 'Evaluate';
+    btn.disabled = false;
+  }
+}
+
+function renderVerdict(v) {
+  const panel = document.getElementById('verdict-panel');
+  panel.style.display = 'block';
+
+  const fairnessKey = v.fairness.split(' ')[0]; // Fair, Slight, Significant, Lopsided
+  document.getElementById('verdict-fairness').textContent = v.fairness;
+  document.getElementById('verdict-fairness').className = 'verdict-fairness fairness-' + fairnessKey;
+
+  const winnerStr = v.winner === 'Even' ? '— Even trade' : `— ${v.winner} wins`;
+  document.getElementById('verdict-winner').textContent = `${winnerStr} · Δ${v.delta > 0 ? '+' : ''}${v.delta.toFixed(1)} pts · ${v.advantage_pct.toFixed(1)}%`;
+
+  // Delta bar: center = 50%, each side fills based on score ratio
+  const total = v.side_a.total_score + v.side_b.total_score;
+  const aFrac = total > 0 ? v.side_a.total_score / total : 0.5;
+  const barColor = fairnessKey === 'Fair' ? 'var(--green)'
+    : fairnessKey === 'Lopsided' ? 'var(--red)' : 'var(--yellow)';
+  document.getElementById('verdict-bar').style.width = (aFrac * 100).toFixed(1) + '%';
+  document.getElementById('verdict-bar').style.background = barColor;
+
+  document.getElementById('verdict-score-a-label').textContent = `You Receive: ${v.side_a.total_score.toFixed(1)}`;
+  document.getElementById('verdict-delta-label').textContent = `Δ ${Math.abs(v.delta).toFixed(1)}`;
+  document.getElementById('verdict-score-b-label').textContent = `You Give: ${v.side_b.total_score.toFixed(1)}`;
+
+  document.getElementById('verdict-summary').textContent = v.summary;
+  document.getElementById('verdict-rec').textContent = '→ ' + v.recommendation;
+
+  const dispEl = document.getElementById('verdict-disputed');
+  if (v.disputed_assets?.length) {
+    dispEl.style.display = 'block';
+    dispEl.innerHTML = '⚠ Disputed values: ' + v.disputed_assets.join(' · ');
+  } else {
+    dispEl.style.display = 'none';
+  }
+
+  panel.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+}
+
+// ── BOOT ──
+init();
 </script>
 </body>
 </html>
