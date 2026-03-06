@@ -190,7 +190,7 @@ def _load_cache(path: Path) -> list[KTCPlayerValue]:
 def fetch_ktc_values(
     cache_path: Path = DEFAULT_CACHE_PATH,
     force_refresh: bool = False,
-    max_pages: int = 5,
+    max_pages: int = 1,
 ) -> list[KTCPlayerValue]:
     """
     Fetch KTC dynasty values for all players + picks.
@@ -229,6 +229,14 @@ def fetch_ktc_values(
         if page < max_pages - 1:
             time.sleep(INTER_PAGE_DELAY)
 
+    # Deduplicate by ktc_id (KTC returns same players on every page)
+    seen_ids: set[int] = set()
+    unique_players = []
+    for p in all_players:
+        if p.ktc_id not in seen_ids:
+            seen_ids.add(p.ktc_id)
+            unique_players.append(p)
+    all_players = unique_players
     # Sort by rank
     all_players.sort(key=lambda p: p.rank)
     _save_cache(all_players, cache_path)

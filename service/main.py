@@ -20,9 +20,10 @@ STATIC_DIR = Path(__file__).parent / "static"
 async def lifespan(app: FastAPI):
     from mfl_ai_gm.snapshot.builder import DEFAULT_SNAPSHOT_PATH, load_snapshot
     from mfl_ai_gm.adapters.fantasycalc_client import fetch_fc_values, build_mfl_value_map as fc_mfl_map
-    from mfl_ai_gm.adapters.dynastyprocess_client import fetch_dp_values, build_dp_mfl_map, fetch_dp_picks
+    from mfl_ai_gm.adapters.dynastyprocess_client import fetch_dp_values, build_dp_mfl_map
+    from mfl_ai_gm.adapters.ktc_client import fetch_ktc_values, build_ktc_mfl_map
     from mfl_ai_gm.analysis.value_aggregator import build_consensus_values, build_consensus_mfl_map
-    from mfl_ai_gm.analysis.trade_calculator import build_pick_value_table
+
 
     logger.info("mfl-ai-gm service starting...")
 
@@ -62,29 +63,27 @@ async def lifespan(app: FastAPI):
         app.state.dp_players = []
         app.state.dp_value_map = {}
 
-    # Load DP pick values
+    # Load KTC values
     try:
-        dp_picks = fetch_dp_picks()
-        app.state.dp_picks = dp_picks
-        logger.info("DP picks: %d slots", len(dp_picks))
+        ktc_players = fetch_ktc_values()
+        app.state.ktc_players = ktc_players
+        app.state.ktc_value_map = build_ktc_mfl_map(ktc_players)
+        logger.info("KTC: %d players, %d MFL IDs", len(ktc_players), len(app.state.ktc_value_map))
     except Exception as e:
-        logger.warning("DP picks load failed: %s", e)
-        app.state.dp_picks = []
-
-    # Build consensus + pick table
+        logger.warning("KTC load failed: %s", e)
+        app.state.ktc_players = []
+        app.state.ktc_value_map = {}
+    # Build consensus
     try:
-        consensus = build_consensus_values(app.state.fc_value_map, app.state.dp_value_map)
+        consensus = build_consensus_values(app.state.fc_value_map, app.state.dp_value_map, app.state.ktc_value_map)
         app.state.consensus_players = consensus
         app.state.consensus_map = build_consensus_mfl_map(consensus)
-        app.state.pick_table = build_pick_value_table(app.state.dp_picks)
         both = sum(1 for p in consensus if p.sources == 2)
-        logger.info("Consensus: %d players ranked, %d with both sources, %d pick slots",
-            len(consensus), both, len(app.state.pick_table))
+        logger.info("Consensus: %d players ranked, %d with both sources", len(consensus), both)
     except Exception as e:
         logger.warning("Consensus build failed: %s", e)
         app.state.consensus_players = []
         app.state.consensus_map = {}
-        app.state.pick_table = {}
 
     yield
     logger.info("mfl-ai-gm service shutting down.")
@@ -122,5 +121,6 @@ async def health():
         "fc_players": len(getattr(app.state, "fc_value_map", {})),
         "dp_players": len(getattr(app.state, "dp_value_map", {})),
         "consensus_players": len(getattr(app.state, "consensus_players", [])),
-        "pick_slots": len(getattr(app.state, "pick_table", {})),
+        "ktc_players": len(getattr(app.state, "ktc_value_map", {})),
+
     }

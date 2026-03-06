@@ -45,6 +45,10 @@ class AggregatedPlayerValue:
     fc_tier: Optional[int] = None
     dp_ecr_1qb: Optional[float] = None
     dp_scrape_date: Optional[str] = None
+    ktc_value: Optional[int] = None
+    ktc_norm: Optional[float] = None
+    ktc_rank: Optional[int] = None
+    ktc_trend: Optional[int] = None
     value_signal: str = "Consensus"
 
 
@@ -52,30 +56,34 @@ def _normalize(values: list[int], top_n: int = NORM_TOP_N) -> dict[int, float]:
     if not values:
         return {}
     sorted_vals = sorted(values, reverse=True)
-    ceiling = sorted_vals[min(top_n - 1, len(sorted_vals) - 1)]
+    ceiling = sorted_vals[0]
     span = ceiling or 1.0
     result = {}
     for v in values:
         norm = max(0.0, min(100.0, v / span * 100))
         result[v] = round(norm, 2)
     return result
-
-
-def build_consensus_values(fc_map: dict, dp_map: dict) -> list[AggregatedPlayerValue]:
-    all_mfl_ids = set(fc_map.keys()) | set(dp_map.keys())
-    logger.info("Aggregating: %d FC players, %d DP players, %d unique MFL IDs",
-                len(fc_map), len(dp_map), len(all_mfl_ids))
+def build_consensus_values(fc_map: dict, dp_map: dict, ktc_map: dict = None) -> list[AggregatedPlayerValue]:
+    ktc_map = ktc_map or {}
+    all_mfl_ids = set(fc_map.keys()) | set(dp_map.keys()) | set(ktc_map.keys())
+    logger.info("Aggregating: %d FC, %d DP, %d KTC, %d unique MFL IDs",
+                len(fc_map), len(dp_map), len(ktc_map), len(all_mfl_ids))
 
     fc_values = [p.value for p in fc_map.values() if p.value >= MIN_FC_VALUE]
     dp_values = [p.value_1qb for p in dp_map.values() if p.value_1qb >= MIN_DP_VALUE]
+    ktc_values = [p.value for p in ktc_map.values() if p.value >= 100]
     fc_norm_map = _normalize(fc_values)
     dp_norm_map = _normalize(dp_values)
+    ktc_norm_map = _normalize(ktc_values)
 
     players: list[AggregatedPlayerValue] = []
     for mfl_id in all_mfl_ids:
         fc = fc_map.get(mfl_id)
         dp = dp_map.get(mfl_id)
-        if fc:
+        ktc = ktc_map.get(mfl_id)
+        if ktc:
+            name, position, nfl_team, age = ktc.name, ktc.position, ktc.nfl_team, ktc.age
+        elif fc:
             name, position, nfl_team, age = fc.name, fc.position, fc.nfl_team, fc.age
         else:
             name = dp.name if dp else ""
@@ -96,20 +104,36 @@ def build_consensus_values(fc_map: dict, dp_map: dict) -> list[AggregatedPlayerV
             agg.dp_norm = dp_norm_map.get(dp.value_1qb, 0.0)
             agg.dp_ecr_1qb = dp.ecr_1qb
             agg.dp_scrape_date = dp.scrape_date
+        if ktc and ktc.value >= 100:
+            agg.ktc_value = ktc.value
+            agg.ktc_norm = ktc_norm_map.get(ktc.value, 0.0)
+            agg.ktc_rank = ktc.rank
+            agg.ktc_trend = ktc.trend_overall
 
-        scores = [s for s in [agg.fc_norm, agg.dp_norm] if s is not None]
+        scores = [s for s in [agg.fc_norm, agg.dp_norm, agg.ktc_norm] if s is not None]
         agg.sources = len(scores)
         agg.consensus_score = round(sum(scores) / len(scores), 2) if scores else 0.0
 
-        if agg.fc_norm is not None and agg.dp_norm is not None:
-            agg.disagreement = round(abs(agg.fc_norm - agg.dp_norm), 2)
+        available = [s for s in [agg.fc_norm, agg.dp_norm, agg.ktc_norm] if s is not None]
+        if len(available) >= 2:
+            agg.disagreement = round(max(available) - min(available), 2)
             agg.is_disputed = agg.disagreement > DISAGREEMENT_THRESHOLD
-            if agg.fc_norm > agg.dp_norm + DISAGREEMENT_THRESHOLD:
-                agg.value_signal = "FC Higher"
-            elif agg.dp_norm > agg.fc_norm + DISAGREEMENT_THRESHOLD:
-                agg.value_signal = "DP Higher"
-            else:
-                agg.value_signal = "Consensus"
+            if agg.ktc_norm is not None and agg.fc_norm is not None:
+                if agg.ktc_norm > agg.fc_norm + DISAGREEMENT_THRESHOLD:
+                    agg.value_signal = "KTC Higher"
+                elif agg.fc_norm > agg.ktc_norm + DISAGREEMENT_THRESHOLD:
+                    agg.value_signal = "FC Higher"
+                elif agg.dp_norm is not None and agg.dp_norm > agg.fc_norm + DISAGREEMENT_THRESHOLD:
+                    agg.value_signal = "DP Higher"
+                else:
+                    agg.value_signal = "Consensus"
+            elif agg.fc_norm is not None and agg.dp_norm is not None:
+                if agg.fc_norm > agg.dp_norm + DISAGREEMENT_THRESHOLD:
+                    agg.value_signal = "FC Higher"
+                elif agg.dp_norm > agg.fc_norm + DISAGREEMENT_THRESHOLD:
+                    agg.value_signal = "DP Higher"
+                else:
+                    agg.value_signal = "Consensus"
 
         if agg.consensus_score > 0:
             players.append(agg)
