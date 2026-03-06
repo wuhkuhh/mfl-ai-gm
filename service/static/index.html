@@ -1211,20 +1211,11 @@ function onSearch(side) {
 }
 
 async function doSearch(side, q) {
-  console.log('[trade] searching:', side, q);
   try {
-    const url = '/api/consensus/search?q=' + encodeURIComponent(q) + '&limit=8';
-    console.log('[trade] fetch:', url);
-    const r = await fetch(url);
-    console.log('[trade] status:', r.status);
-    const results = await r.json();
-    console.log('[trade] results:', results.length);
+    const results = await apiFetch('/api/consensus/search?q=' + encodeURIComponent(q) + '&limit=8');
     searchResults[side] = results;
     showAC(side, results);
-  } catch(e) {
-    console.error('[trade] search error:', e);
-    hideAC(side);
-  }
+  } catch(e) { hideAC(side); }
 }
 
 function showAC(side, players) {
