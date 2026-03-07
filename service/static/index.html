@@ -848,9 +848,8 @@ async function init() {
     document.getElementById('topbar-badge').textContent = 'Week ' + (state.health.week || '1');
     document.getElementById('status-text').textContent = 'Live · ' + state.health.league;
 
-    await Promise.all([loadConsensus(), loadWindows(), loadConstruction(), loadStandings()]);
+    await Promise.all([loadConsensus(), loadWindows(), loadConstruction(), loadStandings(), populateFranchiseSelects()]);
     renderDashboard();
-    populateFranchiseSelects();
   } catch(e) {
     document.getElementById('status-text').textContent = 'Error: ' + e.message;
     console.error(e);
@@ -1103,24 +1102,21 @@ function renderDashboard() {
 }
 
 // ── FRANCHISE SELECTS ──
-function populateFranchiseSelects() {
-  const ids = Object.keys(state.windows.reduce((acc,w) => {
-    acc[w.franchise_id] = w.franchise_name; return acc;
-  }, {}));
-  // Use construction for franchise list
-  const franchises = state.construction.map(s => ({id: s.franchise_id, name: s.franchise_name}));
-  state.franchises = franchises;
-
-  ['waiver-franchise-select','sell-franchise-select'].forEach(selId => {
-    const sel = document.getElementById(selId);
-    if (!sel) return;
-    franchises.forEach(f => {
-      const opt = document.createElement('option');
-      opt.value = f.id;
-      opt.textContent = f.name;
-      sel.appendChild(opt);
+async function populateFranchiseSelects() {
+  try {
+    const franchises = await apiFetch('/api/franchises');
+    state.franchises = franchises;
+    ['waiver-franchise-select','sell-franchise-select'].forEach(selId => {
+      const sel = document.getElementById(selId);
+      if (!sel) return;
+      franchises.forEach(f => {
+        const opt = document.createElement('option');
+        opt.value = f.franchise_id;
+        opt.textContent = f.franchise_name;
+        sel.appendChild(opt);
+      });
     });
-  });
+  } catch(e) { console.error('franchises:', e); }
 }
 
 // ── WAIVERS ──

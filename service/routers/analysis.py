@@ -431,6 +431,39 @@ async def evaluate_trade_endpoint(trade: TradeRequestIn, request: Request):
     verdict = evaluate_trade(side_a, side_b, consensus_map)
     return _verdict_out(verdict)
 
+@router.get("/standings", response_model=list)
+async def get_standings(request: Request):
+    """League standings sorted by wins then points for."""
+    snapshot = _require_snapshot(request)
+    fmap = snapshot.franchise_map
+    result = []
+    for fid, s in snapshot.standings.items():
+        franchise = fmap.get(fid)
+        result.append({
+            "franchise_id": fid,
+            "franchise_name": franchise.name if franchise else fid,
+            "wins": s.wins,
+            "losses": s.losses,
+            "ties": s.ties,
+            "record": s.record,
+            "points_for": s.points_for,
+            "points_against": s.points_against,
+            "streak": s.streak,
+        })
+    result.sort(key=lambda x: (-x["wins"], -x["points_for"]))
+    return result
+
+
+@router.get("/franchises", response_model=list)
+async def get_franchises(request: Request):
+    """All franchises - id, name, owner. Used for UI selects."""
+    snapshot = _require_snapshot(request)
+    return [
+        {"franchise_id": fid, "franchise_name": f.name, "owner_name": f.owner_name}
+        for fid, f in snapshot.franchise_map.items()
+    ]
+
+
 @router.post("/values/refresh-all", response_model=dict)
 async def refresh_all_values(request: Request):
     """Force refresh FC + DP values and rebuild consensus. Bypasses all caches."""
