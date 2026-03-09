@@ -340,10 +340,11 @@ async def get_franchise_sell_high(franchise_id: str, request: Request):
         raise HTTPException(404, "No roster found.")
     player_names = {pid: p.name for pid, p in snapshot.players.items()}
     from mfl_ai_gm.analysis.sell_high import build_franchise_sell_report
+    ktc_map = getattr(request.app.state, "ktc_value_map", {})
     report = build_franchise_sell_report(
         franchise_id=franchise_id, franchise_name=fmap[franchise_id].name,
         roster_player_ids=roster.all_ids, mfl_value_map=fc_map,
-        snapshot_player_names=player_names)
+        snapshot_player_names=player_names, ktc_value_map=ktc_map)
     return _sell_report_out(report)
 
 

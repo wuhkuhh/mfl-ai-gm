@@ -39,6 +39,13 @@ STRONG_SELL_THRESHOLD = 65
 CONSIDER_SELL_THRESHOLD = 45
 HOLD_THRESHOLD = 25
 
+# KTC trend thresholds (KTC scale: values move ~10-500 per 30d)
+KTC_RISING_FAST = 200
+KTC_RISING = 50
+KTC_FALLING_FAST = -200
+KTC_FALLING = -50
+
+# FC trend thresholds (FC scale)
 # 30-day trend thresholds
 RISING_FAST = 300      # Strong buy momentum — sell into it
 RISING = 100
@@ -95,14 +102,19 @@ class FranchiseSellHighReport:
 def _score_player(
     mfl_id: str,
     name: str,
-    fc: FCPlayerValue,
+    fc,
+    ktc_trend_30d=None,
+    ktc_rank=None,
+    ktc_value=None,
 ) -> SellHighSignal:
-    """Compute sell-high score for a single player."""
+    """Compute sell-high score for a single player. KTC trend is primary signal."""
     score = 0.0
     reasons = []
 
-    age = fc.age
-    pos = fc.position
+    if fc is None and ktc_value is None:
+        return None
+    age = fc.age if fc else None
+    pos = fc.position if fc else "WR"
     curve = POSITION_CURVES.get(pos, POSITION_CURVES.get("WR", {}))
 
     # ── Age signals ──────────────────────────────────────────────────────────
@@ -123,44 +135,62 @@ def _score_player(
             # In peak — good sell if trending up (sell into the hype)
             pass  # handled by trend signal below
 
-    # ── Trend signals ────────────────────────────────────────────────────────
-    trend = fc.trend_30d
-    if trend >= RISING_FAST:
-        score += 20
-        reasons.append(f"Rising fast (+{trend} in 30d) — sell into momentum")
-    elif trend >= RISING:
-        score += 10
-        reasons.append(f"Trending up (+{trend} in 30d)")
-    elif trend <= FALLING_FAST:
-        score -= 10  # already declining, may be too late to sell well
-        reasons.append(f"Already falling ({trend} in 30d)")
-    elif trend <= FALLING:
-        score -= 5
+    # ── Trend signals — KTC primary, FC fallback ─────────────────────────────
+    ktc_trend = ktc_trend_30d if ktc_trend_30d is not None else None
+    fc_trend = fc.trend_30d if fc else 0
 
-    # ── Redraft vs dynasty gap ────────────────────────────────────────────────
-    redraft_premium = fc.redraft_value - fc.value
-    if redraft_premium >= REDRAFT_PREMIUM_THRESHOLD:
-        score += 20
-        reasons.append(
-            f"Redraft value (${fc.redraft_value}) >> dynasty (${fc.value}) — current producer, aging"
-        )
-    elif redraft_premium >= REDRAFT_PREMIUM_THRESHOLD // 2:
-        score += 10
-        reasons.append("Redraft outpacing dynasty value — watch for decline")
+    if ktc_trend is not None:
+        # KTC is the community benchmark — weight higher
+        if ktc_trend >= KTC_RISING_FAST:
+            score += 25
+            reasons.append(f"KTC rising fast (+{ktc_trend} in 30d) — sell into momentum")
+        elif ktc_trend >= KTC_RISING:
+            score += 12
+            reasons.append(f"KTC trending up (+{ktc_trend} in 30d)")
+        elif ktc_trend <= KTC_FALLING_FAST:
+            score -= 12
+            reasons.append(f"KTC already falling ({ktc_trend} in 30d) — may be too late")
+        elif ktc_trend <= KTC_FALLING:
+            score -= 6
+            reasons.append(f"KTC softening ({ktc_trend} in 30d)")
+    elif fc:
+        if fc_trend >= RISING_FAST:
+            score += 20
+            reasons.append(f"FC rising fast (+{fc_trend} in 30d) — sell into momentum")
+        elif fc_trend >= RISING:
+            score += 10
+            reasons.append(f"FC trending up (+{fc_trend} in 30d)")
+        elif fc_trend <= FALLING_FAST:
+            score -= 10
+            reasons.append(f"FC already falling ({fc_trend} in 30d)")
+        elif fc_trend <= FALLING:
+            score -= 5
 
-    # ── High overall value — good time to sell ────────────────────────────────
-    if fc.overall_rank <= 10:
+    # ── Redraft vs dynasty gap (FC only) ─────────────────────────────────────
+    if fc:
+        redraft_premium = fc.redraft_value - fc.value
+        if redraft_premium >= REDRAFT_PREMIUM_THRESHOLD:
+            score += 20
+            reasons.append(
+                f"Redraft (${fc.redraft_value}) >> dynasty (${fc.value}) — aging producer"
+            )
+        elif redraft_premium >= REDRAFT_PREMIUM_THRESHOLD // 2:
+            score += 10
+            reasons.append("Redraft outpacing dynasty value — watch for decline")
+
+    # ── High overall value — use KTC rank if available ────────────────────────
+    rank = ktc_rank if ktc_rank is not None else (fc.overall_rank if fc else 999)
+    if rank <= 10:
         score += 15
-        reasons.append(f"Top-10 overall value — maximum trade return")
-    elif fc.overall_rank <= 25:
+        reasons.append(f"Top-10 KTC rank — maximum trade return window")
+    elif rank <= 25:
         score += 8
-        reasons.append(f"Top-25 overall — strong trade return available")
+        reasons.append(f"Top-25 KTC rank — strong trade return available")
 
-    # ── Position rank vs overall rank gap ────────────────────────────────────
-    # If position rank >> overall rank, player is overvalued at their position
-    if fc.position_rank <= 3 and fc.overall_rank <= 20:
+    # ── Position rank vs overall rank (FC) ───────────────────────────────────
+    if fc and fc.position_rank <= 3 and fc.overall_rank <= 20:
         score += 10
-        reasons.append(f"#{fc.position_rank} at {pos} — positional premium, trade from strength")
+        reasons.append(f"#{fc.position_rank} at {pos} — positional premium")
 
     # ── Clamp score ──────────────────────────────────────────────────────────
     score = max(-10.0, min(100.0, score))
@@ -175,21 +205,22 @@ def _score_player(
     else:
         signal = "Buy Low"
 
+    trend_display = ktc_trend_30d if ktc_trend_30d is not None else (fc.trend_30d if fc else 0)
     return SellHighSignal(
         mfl_player_id=mfl_id,
         name=name,
         position=pos,
-        nfl_team=fc.nfl_team,
+        nfl_team=fc.nfl_team if fc else "FA",
         age=age,
-        fc_value=fc.value,
-        overall_rank=fc.overall_rank,
-        position_rank=fc.position_rank,
-        trend_30d=trend,
-        redraft_value=fc.redraft_value,
+        fc_value=ktc_value if ktc_value is not None else (fc.value if fc else 0),
+        overall_rank=ktc_rank if ktc_rank is not None else (fc.overall_rank if fc else 999),
+        position_rank=fc.position_rank if fc else 999,
+        trend_30d=trend_display,
+        redraft_value=fc.redraft_value if fc else 0,
         sell_score=round(score, 1),
         sell_signal=signal,
         reasons=reasons,
-        tier=fc.tier,
+        tier=fc.tier if fc else None,
     )
 
 
@@ -202,7 +233,8 @@ def build_franchise_sell_report(
     franchise_name: str,
     roster_player_ids: list[str],
     mfl_value_map: dict[str, FCPlayerValue],
-    snapshot_player_names: dict[str, str],  # mfl_id → name
+    snapshot_player_names: dict[str, str],
+    ktc_value_map: dict = None,  # mfl_id -> KTCPlayerValue
 ) -> FranchiseSellHighReport:
     """
     Build sell-high report for one franchise.
@@ -218,15 +250,23 @@ def build_franchise_sell_report(
 
     for pid in roster_player_ids:
         fc = mfl_value_map.get(pid)
-        if fc is None:
-            continue  # no FC data for this player (DEF, K, etc.)
-        if fc.value < MIN_VALUE_THRESHOLD:
-            continue  # low-value players not worth sell-high analysis
-        if fc.position not in ("QB", "RB", "WR", "TE"):
+        ktc_check = (ktc_value_map or {}).get(pid)
+        if fc is None and ktc_check is None:
+            continue
+        if fc and fc.value < MIN_VALUE_THRESHOLD and (ktc_check is None or ktc_check.value < 500):
+            continue
+        pos = fc.position if fc else (ktc_check.position if ktc_check else None)
+        if pos not in ("QB", "RB", "WR", "TE"):
             continue
 
-        name = snapshot_player_names.get(pid) or fc.name
-        signal = _score_player(pid, name, fc)
+        name = snapshot_player_names.get(pid) or (fc.name if fc else pid)
+        ktc = (ktc_value_map or {}).get(pid)
+        signal = _score_player(
+            pid, name, fc,
+            ktc_trend_30d=ktc.trend_overall if ktc else None,
+            ktc_rank=ktc.rank if ktc else None,
+            ktc_value=ktc.value if ktc else None,
+        )
         signals.append(signal)
 
     # Sort by sell_score descending
@@ -267,6 +307,7 @@ def build_franchise_sell_report(
 def build_all_sell_reports(
     snapshot,
     mfl_value_map: dict[str, FCPlayerValue],
+    ktc_value_map: dict = None,
 ) -> list[FranchiseSellHighReport]:
     """Build sell-high reports for all franchises."""
     # Build name lookup from snapshot
@@ -283,6 +324,7 @@ def build_all_sell_reports(
             roster_player_ids=roster.all_ids,
             mfl_value_map=mfl_value_map,
             snapshot_player_names=player_names,
+            ktc_value_map=ktc_value_map,
         )
         reports.append(report)
 
