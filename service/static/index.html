@@ -553,9 +553,6 @@ select.input { cursor: pointer; }
     <div class="nav-item" onclick="showTab('roster')">
       <span class="icon">▤</span> Rosters
     </div>
-    <div class="nav-item" onclick="showTab('roster')">
-      <span class="icon">▤</span> Rosters
-    </div>
     <div class="nav-item" onclick="showTab('trades')">
       <span class="icon">⇄</span> Trades
     </div>
@@ -630,20 +627,6 @@ select.input { cursor: pointer; }
       </div>
     </div>
     <div id="waivers-content"><div class="empty">Select a franchise to see waiver recommendations.</div></div>
-  </div>
-
-  <!-- ══ ROSTER ══ -->
-  <div id="tab-roster" class="tab-content">
-    <div class="section-header">
-      <div><div class="section-title">Roster Viewer</div>
-      <div class="section-sub">All players with KTC + consensus dynasty values</div></div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <select class="input" style="width:220px" id="roster-franchise-select" onchange="loadRoster()">
-          <option value="">Select franchise...</option>
-        </select>
-      </div>
-    </div>
-    <div id="roster-content"><div class="empty">Select a franchise to view their roster.</div></div>
   </div>
 
   <!-- ══ ROSTER ══ -->
