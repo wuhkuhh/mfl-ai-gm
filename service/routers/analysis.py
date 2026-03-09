@@ -431,6 +431,52 @@ async def evaluate_trade_endpoint(trade: TradeRequestIn, request: Request):
     verdict = evaluate_trade(side_a, side_b, consensus_map)
     return _verdict_out(verdict)
 
+@router.get("/roster/{franchise_id}", response_model=list)
+async def get_franchise_roster(franchise_id: str, request: Request):
+    """Full roster for a franchise with consensus values attached."""
+    snapshot = _require_snapshot(request)
+    fmap = snapshot.franchise_map
+    if franchise_id not in fmap:
+        raise HTTPException(404, f"Franchise {franchise_id!r} not found.")
+    roster = snapshot.rosters.get(franchise_id)
+    if not roster:
+        raise HTTPException(404, "No roster found.")
+    consensus_map = getattr(request.app.state, "consensus_map", {})
+    players_dict = snapshot.players
+    result = []
+    for slot in roster.slots:
+        pid = slot.player_id
+        p = players_dict.get(pid)
+        if not p or p.is_team_unit:
+            continue
+        agg = consensus_map.get(pid)
+        result.append({
+            "player_id": pid,
+            "name": p.name,
+            "position": p.position,
+            "nfl_team": p.nfl_team,
+            "age": p.age,
+            "status": slot.status,
+            "consensus_score": agg.consensus_score if agg else None,
+            "consensus_rank": agg.consensus_rank if agg else None,
+            "ktc_value": agg.ktc_value if agg else None,
+            "ktc_norm": agg.ktc_norm if agg else None,
+            "ktc_rank": agg.ktc_rank if agg else None,
+            "fc_norm": agg.fc_norm if agg else None,
+            "dp_norm": agg.dp_norm if agg else None,
+            "sources": agg.sources if agg else 0,
+            "value_signal": agg.value_signal if agg else None,
+            "is_disputed": agg.is_disputed if agg else False,
+        })
+    # Sort: skill positions first, then by consensus score desc
+    pos_order = {"QB": 0, "RB": 1, "WR": 2, "TE": 3}
+    result.sort(key=lambda x: (
+        pos_order.get(x["position"], 9),
+        -(x["consensus_score"] or 0)
+    ))
+    return result
+
+
 @router.get("/standings", response_model=list)
 async def get_standings(request: Request):
     """League standings sorted by wins then points for."""

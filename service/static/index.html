@@ -550,6 +550,12 @@ select.input { cursor: pointer; }
     <div class="nav-item" onclick="showTab('waivers')">
       <span class="icon">＋</span> Waivers / FA
     </div>
+    <div class="nav-item" onclick="showTab('roster')">
+      <span class="icon">▤</span> Rosters
+    </div>
+    <div class="nav-item" onclick="showTab('roster')">
+      <span class="icon">▤</span> Rosters
+    </div>
     <div class="nav-item" onclick="showTab('trades')">
       <span class="icon">⇄</span> Trades
     </div>
@@ -624,6 +630,34 @@ select.input { cursor: pointer; }
       </div>
     </div>
     <div id="waivers-content"><div class="empty">Select a franchise to see waiver recommendations.</div></div>
+  </div>
+
+  <!-- ══ ROSTER ══ -->
+  <div id="tab-roster" class="tab-content">
+    <div class="section-header">
+      <div><div class="section-title">Roster Viewer</div>
+      <div class="section-sub">All players with KTC + consensus dynasty values</div></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select class="input" style="width:220px" id="roster-franchise-select" onchange="loadRoster()">
+          <option value="">Select franchise...</option>
+        </select>
+      </div>
+    </div>
+    <div id="roster-content"><div class="empty">Select a franchise to view their roster.</div></div>
+  </div>
+
+  <!-- ══ ROSTER ══ -->
+  <div id="tab-roster" class="tab-content">
+    <div class="section-header">
+      <div><div class="section-title">Roster Viewer</div>
+      <div class="section-sub">All players with KTC + consensus dynasty values</div></div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select class="input" style="width:220px" id="roster-franchise-select" onchange="loadRoster()">
+          <option value="">Select franchise...</option>
+        </select>
+      </div>
+    </div>
+    <div id="roster-content"><div class="empty">Select a franchise to view their roster.</div></div>
   </div>
 
   <!-- ══ TRADES ══ -->
@@ -818,8 +852,9 @@ function showTab(name) {
   });
   const titles = {
     dashboard:'Dashboard', matchup:'Matchup', waivers:'Waivers / FA',
-    trades:'Trade Calculator', values:'Player Values', windows:'Contention Windows',
-    construction:'Roster Construction', standings:'Standings', sellhigh:'Sell High'
+    roster:'Rosters', trades:'Trade Calculator', values:'Player Values',
+    windows:'Contention Windows', construction:'Roster Construction',
+    standings:'Standings', sellhigh:'Sell High'
   };
   document.getElementById('topbar-title').textContent = titles[name] || name;
   if (name === 'values' && state.consensus.length === 0) loadConsensus();
@@ -1106,7 +1141,7 @@ async function populateFranchiseSelects() {
   try {
     const franchises = await apiFetch('/api/franchises');
     state.franchises = franchises;
-    ['waiver-franchise-select','sell-franchise-select'].forEach(selId => {
+    ['waiver-franchise-select','sell-franchise-select','roster-franchise-select'].forEach(selId => {
       const sel = document.getElementById(selId);
       if (!sel) return;
       franchises.forEach(f => {
@@ -1117,6 +1152,142 @@ async function populateFranchiseSelects() {
       });
     });
   } catch(e) { console.error('franchises:', e); }
+}
+
+// ── ROSTER ──
+async function loadRoster() {
+  const fid = document.getElementById('roster-franchise-select').value;
+  const el = document.getElementById('roster-content');
+  if (!fid) { el.innerHTML = '<div class="empty">Select a franchise.</div>'; return; }
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+  try {
+    const players = await apiFetch('/api/roster/' + fid);
+    if (!players.length) { el.innerHTML = '<div class="empty">No players found.</div>'; return; }
+
+    // Group by position
+    const positions = ['QB','RB','WR','TE'];
+    const groups = {};
+    positions.forEach(p => groups[p] = []);
+    players.forEach(p => {
+      if (groups[p.position]) groups[p.position].push(p);
+      else { groups[p.position] = groups[p.position] || []; groups[p.position].push(p); }
+    });
+
+    // Total roster value
+    const totalVal = players.reduce((s, p) => s + (p.consensus_score || 0), 0);
+    const avgAge = players.filter(p => p.age).reduce((s,p,_,a) => s + p.age/a.length, 0);
+
+    el.innerHTML = `
+      <div class="grid-4" style="margin-bottom:16px">
+        <div class="kpi kpi-accent"><div class="kpi-label">Roster Value</div><div class="kpi-value">${totalVal.toFixed(0)}</div><div class="kpi-sub">Consensus sum</div></div>
+        <div class="kpi"><div class="kpi-label">Avg Age</div><div class="kpi-value">${avgAge.toFixed(1)}</div><div class="kpi-sub">Skill players</div></div>
+        <div class="kpi kpi-green"><div class="kpi-label">Players</div><div class="kpi-value">${players.length}</div><div class="kpi-sub">Skill positions</div></div>
+        <div class="kpi"><div class="kpi-label">Disputed</div><div class="kpi-value kpi-yellow">${players.filter(p=>p.is_disputed).length}</div><div class="kpi-sub">Sources disagree</div></div>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden">
+        <table class="data-table">
+          <thead style="position:sticky;top:0;background:var(--bg2)">
+            <tr>
+              <th>Rank</th><th>Player</th><th>Pos</th><th>Team</th><th>Age</th>
+              <th>KTC</th><th>FC</th><th>DP</th><th>Consensus</th><th>Status</th><th>Signal</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${players.map(p => {
+              const ktc = p.ktc_norm != null ? `<span class="pill pill-ktc">${p.ktc_norm.toFixed(0)}</span>` : '<span style="color:var(--muted)">—</span>';
+              const fc  = p.fc_norm  != null ? `<span class="pill pill-fc">${p.fc_norm.toFixed(0)}</span>`   : '<span style="color:var(--muted)">—</span>';
+              const dp  = p.dp_norm  != null ? `<span class="pill pill-dp">${p.dp_norm.toFixed(0)}</span>`   : '<span style="color:var(--muted)">—</span>';
+              const signal = p.is_disputed
+                ? `<span class="tag tag-disputed">⚠ ${p.value_signal}</span>`
+                : p.value_signal && p.value_signal !== 'Consensus'
+                  ? `<span class="tag tag-ktc-high">${p.value_signal}</span>`
+                  : '<span style="color:var(--muted);font-size:10px">—</span>';
+              const statusColor = p.status === 'ROSTER' ? 'var(--muted)' : p.status === 'INJURED_RESERVE' ? 'var(--red)' : 'var(--yellow)';
+              const name = p.name.includes(',') ? p.name.split(',').reverse().map(s=>s.trim()).join(' ') : p.name;
+              return `<tr>
+                <td class="rank">${p.consensus_rank || '—'}</td>
+                <td class="name">${name}</td>
+                <td><span class="pos-badge pos-${p.position}">${p.position}</span></td>
+                <td style="color:var(--muted)">${p.nfl_team}</td>
+                <td style="color:var(--muted)">${p.age || '—'}</td>
+                <td>${ktc}</td><td>${fc}</td><td>${dp}</td>
+                <td>${p.consensus_score != null ? `<div class="val-bar-wrap"><div class="val-bar-track"><div class="val-bar-fill" style="width:${p.consensus_score}%"></div></div><span class="val-num">${p.consensus_score.toFixed(1)}</span></div>` : '—'}</td>
+                <td style="font-size:10px;color:${statusColor}">${p.status}</td>
+                <td>${signal}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  } catch(e) { el.innerHTML = `<div class="empty">Error: ${e.message}</div>`; }
+}
+
+// ── ROSTER ──
+async function loadRoster() {
+  const fid = document.getElementById('roster-franchise-select').value;
+  const el = document.getElementById('roster-content');
+  if (!fid) { el.innerHTML = '<div class="empty">Select a franchise.</div>'; return; }
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Loading...</div>';
+  try {
+    const players = await apiFetch('/api/roster/' + fid);
+    if (!players.length) { el.innerHTML = '<div class="empty">No players found.</div>'; return; }
+
+    // Group by position
+    const positions = ['QB','RB','WR','TE'];
+    const groups = {};
+    positions.forEach(p => groups[p] = []);
+    players.forEach(p => {
+      if (groups[p.position]) groups[p.position].push(p);
+      else { groups[p.position] = groups[p.position] || []; groups[p.position].push(p); }
+    });
+
+    // Total roster value
+    const totalVal = players.reduce((s, p) => s + (p.consensus_score || 0), 0);
+    const avgAge = players.filter(p => p.age).reduce((s,p,_,a) => s + p.age/a.length, 0);
+
+    el.innerHTML = `
+      <div class="grid-4" style="margin-bottom:16px">
+        <div class="kpi kpi-accent"><div class="kpi-label">Roster Value</div><div class="kpi-value">${totalVal.toFixed(0)}</div><div class="kpi-sub">Consensus sum</div></div>
+        <div class="kpi"><div class="kpi-label">Avg Age</div><div class="kpi-value">${avgAge.toFixed(1)}</div><div class="kpi-sub">Skill players</div></div>
+        <div class="kpi kpi-green"><div class="kpi-label">Players</div><div class="kpi-value">${players.length}</div><div class="kpi-sub">Skill positions</div></div>
+        <div class="kpi"><div class="kpi-label">Disputed</div><div class="kpi-value kpi-yellow">${players.filter(p=>p.is_disputed).length}</div><div class="kpi-sub">Sources disagree</div></div>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden">
+        <table class="data-table">
+          <thead style="position:sticky;top:0;background:var(--bg2)">
+            <tr>
+              <th>Rank</th><th>Player</th><th>Pos</th><th>Team</th><th>Age</th>
+              <th>KTC</th><th>FC</th><th>DP</th><th>Consensus</th><th>Status</th><th>Signal</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${players.map(p => {
+              const ktc = p.ktc_norm != null ? `<span class="pill pill-ktc">${p.ktc_norm.toFixed(0)}</span>` : '<span style="color:var(--muted)">—</span>';
+              const fc  = p.fc_norm  != null ? `<span class="pill pill-fc">${p.fc_norm.toFixed(0)}</span>`   : '<span style="color:var(--muted)">—</span>';
+              const dp  = p.dp_norm  != null ? `<span class="pill pill-dp">${p.dp_norm.toFixed(0)}</span>`   : '<span style="color:var(--muted)">—</span>';
+              const signal = p.is_disputed
+                ? `<span class="tag tag-disputed">⚠ ${p.value_signal}</span>`
+                : p.value_signal && p.value_signal !== 'Consensus'
+                  ? `<span class="tag tag-ktc-high">${p.value_signal}</span>`
+                  : '<span style="color:var(--muted);font-size:10px">—</span>';
+              const statusColor = p.status === 'ROSTER' ? 'var(--muted)' : p.status === 'INJURED_RESERVE' ? 'var(--red)' : 'var(--yellow)';
+              const name = p.name.includes(',') ? p.name.split(',').reverse().map(s=>s.trim()).join(' ') : p.name;
+              return `<tr>
+                <td class="rank">${p.consensus_rank || '—'}</td>
+                <td class="name">${name}</td>
+                <td><span class="pos-badge pos-${p.position}">${p.position}</span></td>
+                <td style="color:var(--muted)">${p.nfl_team}</td>
+                <td style="color:var(--muted)">${p.age || '—'}</td>
+                <td>${ktc}</td><td>${fc}</td><td>${dp}</td>
+                <td>${p.consensus_score != null ? `<div class="val-bar-wrap"><div class="val-bar-track"><div class="val-bar-fill" style="width:${p.consensus_score}%"></div></div><span class="val-num">${p.consensus_score.toFixed(1)}</span></div>` : '—'}</td>
+                <td style="font-size:10px;color:${statusColor}">${p.status}</td>
+                <td>${signal}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  } catch(e) { el.innerHTML = `<div class="empty">Error: ${e.message}</div>`; }
 }
 
 // ── WAIVERS ──
